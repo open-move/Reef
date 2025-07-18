@@ -15,48 +15,51 @@ module reef::query {
 
     const EInsufficientBond: u64 = 0;
     const EInvalidQueryStatus: u64 = 1;
-    const EQueryNotFound: u64 = 2;
     const ELivenessNotExpired: u64 = 3;
-    const EAlreadyClaimed: u64 = 4;
     const ENotAuthorized: u64 = 5;
     const EInvalidClaimType: u64 = 6;
-    const EInvalidCommitHash: u64 = 7;
-    const ERevealPeriodExpired: u64 = 8;
     const EInvalidLiveness: u64 = 9;
-    const EInvalidQueryID: u64 = 10;
-    const EInvalidResolver: u64 = 11;
+    const EEmptyTopic: u64 = 10;
+    const EEmptyMessage: u64 = 10;
     const EClaimNotSubmitted: u64 = 12;
-    const EInvalidBondState: u64 = 13;
     const EInvalidResolverProofType: u64 = 14;
+    const EInvalidBondType: u64 = 15;
 
     // use fun get_claim_data as Claim.data;
 
     public struct Query has key {
         id: UID,
+        /// The address of the creator of the query
         creator: address,
-        identifier: vector<u8>,
-        
+        /// The query topic, may be useful for indentifications and offchain processing
+        topic: vector<u8>,
+        /// The query metadata, which contains more data about the query
+        metadata: vector<u8>,
+        /// The liveness period in milliseconds
         liveness_ms: u64,
+        /// The claim type of the query
         claim_type: ClaimType,
 
         bond_type_name: TypeName,
-        reward_type_name: TypeName, 
+        reward_type_name: Option<TypeName>, 
         
-        commit_mode: bool,
-        commit_hash: Option<vector<u8>>,
-        
+        /// The address of the claim submitter
         submitter: Option<address>,
         submitted_claim: Option<Claim>,
         submission_time_ms: Option<u64>,
         
+        /// The address of the challenger
         challenger: Option<address>,
         challenge_time_ms: Option<u64>,
         
-        // validator: Option<address>,
-        resolver_proof_type: TypeName,
+        /// The expected resolver proof
+        resolver_proof: TypeName,
         
-        final_claim: Option<Claim>,
+        /// The status of the query
         status: QueryStatus,
+
+        /// The claim that is finalized after resolution
+        resolved_claim: Option<Claim>,
     }
 
     public enum QueryStatus has copy, store, drop {
@@ -72,36 +75,37 @@ module reef::query {
     public struct RewardKey() has copy, store, drop;
     public struct ChallengeKey() has copy, store, drop;
 
-    public fun submit_query<Bond, Reward>(
+    public fun submit_query<Bond, Proof: drop>(
         config: &Config,
-        identifier: vector<u8>,
+        topic: vector<u8>,
+        metadata: vector<u8>,
         claim_type: ClaimType,
+        bond_amount: u64,
         liveness_ms: u64,
-        bond: Coin<Bond>,
-        reward: Option<Coin<Reward>>,
-        resolver_proof_type: TypeName,
         ctx: &mut TxContext,
     ): Query {
+        let creator = ctx.sender();
         let bond_type_name = type_name::get<Bond>();
-        let reward_type_name = type_name::get<Reward>();
+        let resolver_proof = type_name::get<Proof>();
 
         assert!(liveness_ms > 0, EInvalidLiveness);
-        assert!(vector::length(&identifier) > 0, EInvalidQueryID);
-        assert!(bond.value() >= config.get_minimum_bond(reward_type_name), EInsufficientBond);
-        
-        let mut query = Query {
-            id: object::new(ctx),
-            creator: ctx.sender(),
+        assert!(vector::length(&topic) > 0, EEmptyTopic);
+        assert!(vector::length(&metadata) > 0, EEmptyMessage);
+        assert!(config.is_allowed_bond_type(bond_type_name), EInvalidBondType);
+        assert!(config.is_resolver_proof(resolver_proof), EInvalidResolverProofType);
+        assert!(bond_amount >= config.get_minimum_bond(bond_type_name), EInsufficientBond);
 
-            identifier,
+        Query {
+            id: object::new(ctx),
+            creator,
+
+            topic,
+            metadata,
             claim_type,
             liveness_ms,
 
             bond_type_name,
-            reward_type_name,
-            
-            commit_mode: true,
-            commit_hash: option::none(),
+            reward_type_name: option::none(),
             
             submitter: option::none(),
             submitted_claim: option::none(),
@@ -110,23 +114,11 @@ module reef::query {
             challenger: option::none(),
             challenge_time_ms: option::none(),
 
-            resolver_proof_type,
+            resolver_proof,
 
-            final_claim: option::none(),
+            resolved_claim: option::none(),
             status: QueryStatus::Requested,
-        };
-
-        dynamic_field::add(&mut query.id, BondKey(), bond.into_balance());
-        reward.do!(|r| {
-            assert!(r.value() > 0, EInsufficientBond);
-            dynamic_field::add(&mut query.id, RewardKey(), r.into_balance());
-        });
-
-        query
-    }
-
-    public fun get_resolver_proof_type(query: &Query): TypeName {
-        query.resolver_proof_type
+        }
     }
 
     public fun submit_claim<Bond>(query: &mut Query, claim: Claim, bond: Coin<Bond>, clock: &Clock, ctx: &mut TxContext) {
@@ -151,11 +143,7 @@ module reef::query {
         let elapsed_time_ms = current_time_ms - *query.submission_time_ms.borrow();
         assert!(elapsed_time_ms >= query.liveness_ms, ELivenessNotExpired);
         
-        // let bond_amount = coin::value(&bond);
-        // let required_bond = balance::value(&query.bond);
-        // assert!(bond_amount >= required_bond, EInsufficientBond);
-        
-        bond.destroy_zero();
+        query.validate_and_collect_bond(bond, ctx);
 
         query.challenge_time_ms.fill(current_time_ms);
         query.challenger.fill(ctx.sender());
