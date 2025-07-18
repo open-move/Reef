@@ -1,0 +1,7 @@
+build/*
+
+.sources
+tests
+*.md
+.DS_Store
+*.log
