@@ -109,11 +109,12 @@ module reef::claim {
 
 
     public fun as_bytes(claim: &Claim): vector<u8> {
-        assert!(is_enum(claim), EInvalidClaimType);
+        assert!(is_bytes(claim), EInvalidClaimType);
         claim.as_type!(|bcs| bcs.peel_vec_u8())
     }
 
     public fun as_enum(claim: &Claim): vector<u8> {
-       as_bytes(claim) // enum claims are stored as byte vectors
+        assert!(is_enum(claim), EInvalidClaimType);
+        claim.as_type!(|bcs| bcs.peel_vec_u8())
     }
 }
