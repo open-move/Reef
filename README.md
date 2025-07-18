@@ -33,7 +33,7 @@ The core flow involves four steps:
                  │                 │
                  │                 ├── No Challenge ──┐
                  │                 │                  │
-                 │                 ▼                   ▼
+                 │                 ▼                  ▼
 ┌─────────────┐  │  ┌─────────────────────────────┐   │
 │ Challenger  │  │  │        Challenged           │   │
 │challenge_   │──┼─▶│   Dispute initiated,        │   │
