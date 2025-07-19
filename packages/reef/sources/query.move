@@ -6,21 +6,20 @@ module reef::query {
     use sui::coin::{Self, Coin};
     use sui::balance::{Self, Balance};
 
-    use reef::claim::{Claim, ClaimType};
-    use reef::config::Config;
+    use reef::protocol::Protocol;
+    use reef::protocol;
 
     const EInsufficientBond: u64 = 0;
     const EInvalidQueryStatus: u64 = 1;
     const ELivenessNotExpired: u64 = 3;
     const ENotAuthorized: u64 = 5;
-    const EInvalidClaimType: u64 = 6;
+    const EInvalidCoinType: u64 = 6;
     const EInvalidLiveness: u64 = 9;
     const EEmptyTopic: u64 = 10;
     const EEmptyMessage: u64 = 10;
     const EClaimNotSubmitted: u64 = 12;
     const EInvalidResolverProofType: u64 = 14;
-    const EInvalidBondType: u64 = 15;
-
+    const EInsufficientFeeAmount: u64 = 15;
 
     public struct Query has key {
         id: UID,
@@ -32,29 +31,24 @@ module reef::query {
         metadata: vector<u8>,
         /// The liveness period in milliseconds
         liveness_ms: u64,
-        /// The claim type of the query
-        claim_type: ClaimType,
 
-        bond_type_name: TypeName,
-        reward_type_name: Option<TypeName>, 
+        bond_amount: u64,
+        coin_type: TypeName,
         
         /// The address of the claim submitter
         submitter: Option<address>,
-        submitted_claim: Option<Claim>,
+        submitted_claim: Option<vector<u8>>,
         submission_time_ms: Option<u64>,
         
         /// The address of the challenger
         challenger: Option<address>,
         challenge_time_ms: Option<u64>,
         
-        /// The expected resolver proof
-        resolver_proof: TypeName,
-        
         /// The status of the query
         status: QueryStatus,
 
         /// The claim that is finalized after resolution
-        resolved_claim: Option<Claim>,
+        resolved_claim: Option<vector<u8>>,
     }
 
     public enum QueryStatus has copy, store, drop {
@@ -68,39 +62,36 @@ module reef::query {
     public struct BondKey() has copy, store, drop;
     public struct RewardKey() has copy, store, drop;
 
-    public fun submit_query<Bond, Proof: drop>(
-        config: &Config,
+    public fun submit_query<CoinType>(
+        protocol: &mut Protocol,
+        fee: Coin<CoinType>,
+        bond_amount: u64,
         topic: vector<u8>,
         metadata: vector<u8>,
-        claim_type: ClaimType,
-        bond_amount: u64,
         liveness_ms: u64,
-        creator_bond: Coin<Bond>,
-        ctx: &mut TxContext,
+        ctx: &mut TxContext
     ): Query {
-        let creator = ctx.sender();
-        let bond_type_name = type_name::get<Bond>();
-        let resolver_proof = type_name::get<Proof>();
+        let coin_type = type_name::get<CoinType>();
 
         assert!(liveness_ms > 0, EInvalidLiveness);
         assert!(vector::length(&topic) > 0, EEmptyTopic);
         assert!(vector::length(&metadata) > 0, EEmptyMessage);
-        assert!(config.is_allowed_bond_type(bond_type_name), EInvalidBondType);
-        assert!(config.is_resolver_proof(resolver_proof), EInvalidResolverProofType);
-        assert!(bond_amount >= config.get_minimum_bond(bond_type_name), EInsufficientBond);
-        assert!(creator_bond.value() >= bond_amount, EInsufficientBond);
+        assert!(protocol.is_allowed_coin_type(coin_type), EInvalidCoinType);
+        assert!(bond_amount >= protocol.minimum_bond(coin_type), EInsufficientBond);
+        assert!(fee.value() >= protocol.fee_amount(coin_type), EInsufficientFeeAmount);
 
-        let mut query = Query {
+        protocol.collect_fee(fee);
+
+        Query {
             id: object::new(ctx),
-            creator,
+            creator: ctx.sender(),
 
             topic,
             metadata,
-            claim_type,
             liveness_ms,
 
-            bond_type_name,
-            reward_type_name: option::none(),
+            coin_type,
+            bond_amount,
             
             submitter: option::none(),
             submitted_claim: option::none(),
@@ -109,32 +100,17 @@ module reef::query {
             challenger: option::none(),
             challenge_time_ms: option::none(),
 
-            resolver_proof,
-
             resolved_claim: option::none(),
             status: QueryStatus::Requested,
-        };
-
-        // Initialize bond storage
-        dynamic_field::add(&mut query.id, BondKey(), balance::zero<Bond>());
-        
-        // Collect creator bond
-        let bond_balance = dynamic_field::borrow_mut<BondKey, Balance<Bond>>(&mut query.id, BondKey());
-        bond_balance.join(creator_bond.into_balance());
-        
-        query
+        }
     }
 
-    public fun submit_claim<Bond>(query: &mut Query, claim: Claim, bond: Coin<Bond>, clock: &Clock, ctx: &mut TxContext) {
-        assert!(query.bond_type_name == type_name::get<Bond>(), EInvalidClaimType);
+    public fun submit_claim<CoinType>(query: &mut Query, claim: vector<u8>, bond: Coin<CoinType>, clock: &Clock, ctx: &mut TxContext) {
+        assert!(query.coin_type == type_name::get<CoinType>(), EInvalidCoinType);
         assert!(query.status == QueryStatus::Requested, EInvalidQueryStatus);
-        assert!(claim.type_() == query.claim_type, EInvalidClaimType);
+        assert!(bond.value() >= query.bond_amount, EInsufficientBond);
 
-        // Validate and collect submitter bond
-        let bond_balance = dynamic_field::borrow_mut<BondKey, Balance<Bond>>(&mut query.id, BondKey());
-        let current_bond_value = bond_balance.value();
-        assert!(bond.value() >= current_bond_value, EInsufficientBond);
-        bond_balance.join(bond.into_balance());
+        query.collect_bond(bond);
 
         query.submission_time_ms.fill(clock.timestamp_ms());
         query.submitter.fill(ctx.sender());
@@ -143,7 +119,7 @@ module reef::query {
         query.status = QueryStatus::Submitted;
     }
 
-    public fun challenge_claim<Bond>(query: &mut Query, bond: Coin<Bond>, clock: &Clock, ctx: &mut TxContext) {
+    public fun challenge_claim<CoinType>(query: &mut Query, bond: Coin<CoinType>, clock: &Clock, ctx: &mut TxContext) {
         assert!(query.status == QueryStatus::Submitted, EInvalidQueryStatus);
         assert!(query.submission_time_ms.is_some(), EClaimNotSubmitted);
         
@@ -151,11 +127,7 @@ module reef::query {
         let elapsed_time_ms = current_time_ms - *query.submission_time_ms.borrow();
         assert!(elapsed_time_ms < query.liveness_ms, ELivenessNotExpired);
         
-        // Challenger must post equal bond to submitter's bond
-        let bond_balance = dynamic_field::borrow_mut<BondKey, Balance<Bond>>(&mut query.id, BondKey());
-        let submitter_bond_value = bond_balance.value() / 2; // Half is creator, half is submitter
-        assert!(bond.value() >= submitter_bond_value, EInsufficientBond);
-        bond_balance.join(bond.into_balance());
+        query.collect_bond(bond);
 
         query.challenge_time_ms.fill(current_time_ms);
         query.challenger.fill(ctx.sender());
@@ -163,10 +135,8 @@ module reef::query {
         query.status = QueryStatus::Challenged;
     }
 
-    public fun resolve_query<Bond, Reward, Proof: drop>(
-        query: &mut Query, 
-        _proof: Proof, 
-        resolver_claim: Option<Claim>,
+    public fun resolve_query<CoinType>(
+        query: &mut Query,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
@@ -190,7 +160,7 @@ module reef::query {
             transfer::public_transfer(payout_coin, submitter_addr);
             
             // Handle reward if it exists - goes to submitter
-            if (query.reward_type_name.is_some() && type_name::get<Reward>() == *query.reward_type_name.borrow()) {
+            if (query.reward_type.is_some() && type_name::get<Reward>() == *query.reward_type.borrow()) {
                 if (dynamic_field::exists_(&query.id, RewardKey())) {
                     let reward_balance = dynamic_field::remove<RewardKey, Balance<Reward>>(&mut query.id, RewardKey());
                     let reward_coin = coin::from_balance(reward_balance, ctx);
@@ -209,10 +179,9 @@ module reef::query {
             
             // Determine winner by comparing resolver claim to submitted claim
             let submitter_wins = if (resolver_claim.is_some()) {
-                let resolver_claim_data = *resolver_claim.borrow();
+                let resolver_claim = *resolver_claim.borrow();
                 // Submitter wins if resolver claim matches their submitted claim
-                submitted_claim.data() == resolver_claim_data.data() && 
-                submitted_claim.type_() == resolver_claim_data.type_()
+                submitted_claim == resolver_claim
             } else {
                 // If no resolver claim provided, challenger wins (submitted claim is invalid)
                 false
@@ -226,7 +195,7 @@ module reef::query {
                 transfer::public_transfer(payout_coin, submitter_addr);
                 
                 // Submitter also gets reward if it exists
-                if (query.reward_type_name.is_some() && type_name::get<Reward>() == *query.reward_type_name.borrow()) {
+                if (query.reward_type.is_some() && type_name::get<Reward>() == *query.reward_type.borrow()) {
                     if (dynamic_field::exists_(&query.id, RewardKey())) {
                         let reward_balance = dynamic_field::remove<RewardKey, Balance<Reward>>(&mut query.id, RewardKey());
                         let reward_coin = coin::from_balance(reward_balance, ctx);
@@ -241,7 +210,7 @@ module reef::query {
                 transfer::public_transfer(payout_coin, challenger_addr);
                 
                 // Creator gets reward back if it exists (challenger doesn't get reward)
-                if (query.reward_type_name.is_some() && type_name::get<Reward>() == *query.reward_type_name.borrow()) {
+                if (query.reward_type.is_some() && type_name::get<Reward>() == *query.reward_type.borrow()) {
                     if (dynamic_field::exists_(&query.id, RewardKey())) {
                         let reward_balance = dynamic_field::remove<RewardKey, Balance<Reward>>(&mut query.id, RewardKey());
                         let reward_coin = coin::from_balance(reward_balance, ctx);
@@ -258,7 +227,7 @@ module reef::query {
     }
 
     public fun add_reward<Reward>(query: &mut Query, reward: Coin<Reward>, _ctx: &mut TxContext) {
-        let reward_type_name = type_name::get<Reward>();
+        let reward_type = type_name::get<Reward>();
         assert!(query.status == QueryStatus::Requested, EInvalidQueryStatus);
         
         // Initialize reward storage if it doesn't exist
@@ -269,7 +238,17 @@ module reef::query {
         let reward_balance = dynamic_field::borrow_mut<RewardKey, Balance<Reward>>(&mut query.id, RewardKey());
         reward_balance.join(reward.into_balance());
         
-        query.reward_type_name.fill(reward_type_name);
+        query.reward_type.fill(reward_type);
+    }
+
+    fun collect_bond<CoinType>(query: &mut Query, bond: Coin<CoinType>) {
+        let bond_key = BondKey();
+        if (!dynamic_field::exists_(&mut query.id, bond_key)) {
+            dynamic_field::add(&mut query.id, bond_key, bond.into_balance());
+        } else {
+            let bond_balance = dynamic_field::borrow_mut<BondKey, Balance<CoinType>>(&mut query.id, bond_key);
+            bond_balance.join(bond.into_balance());
+        }
     }
 
     // === Getter Functions ===
@@ -290,27 +269,24 @@ module reef::query {
         query.metadata
     }
     
-    public fun claim_type(query: &Query): ClaimType {
-        query.claim_type
-    }
     
     public fun liveness_ms(query: &Query): u64 {
         query.liveness_ms
     }
     
-    public fun bond_type_name(query: &Query): TypeName {
-        query.bond_type_name
+    public fun bond_type(query: &Query): TypeName {
+        query.bond_type
     }
     
-    public fun reward_type_name(query: &Query): Option<TypeName> {
-        query.reward_type_name
+    public fun reward_type(query: &Query): Option<TypeName> {
+        query.reward_type
     }
     
     public fun submitter(query: &Query): Option<address> {
         query.submitter
     }
     
-    public fun submitted_claim(query: &Query): Option<Claim> {
+    public fun submitted_claim(query: &Query): Option<vector<u8>> {
         query.submitted_claim
     }
     
@@ -330,7 +306,7 @@ module reef::query {
         query.resolver_proof
     }
     
-    public fun resolved_claim(query: &Query): Option<Claim> {
+    public fun resolved_claim(query: &Query): Option<vector<u8>> {
         query.resolved_claim
     }
     
