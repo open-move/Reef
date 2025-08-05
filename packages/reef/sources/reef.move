@@ -1,4 +1,4 @@
-module reef::query {
+module reef::reef {
     use std::type_name::{Self, TypeName};
 
     use sui::clock::Clock;
@@ -7,7 +7,6 @@ module reef::query {
     use sui::balance::{Self, Balance};
 
     use reef::protocol::Protocol;
-    use reef::protocol;
 
     const EInsufficientBond: u64 = 0;
     const EInvalidQueryStatus: u64 = 1;
@@ -18,7 +17,6 @@ module reef::query {
     const EEmptyTopic: u64 = 10;
     const EEmptyMessage: u64 = 10;
     const EClaimNotSubmitted: u64 = 12;
-    const EInvalidResolverProofType: u64 = 14;
     const EInsufficientFeeAmount: u64 = 15;
 
     public struct Query has key {
@@ -54,7 +52,6 @@ module reef::query {
     public enum QueryStatus has copy, store, drop {
         Requested,
         Submitted,
-        Committed,
         Challenged,
         Resolved,
     }
@@ -137,11 +134,11 @@ module reef::query {
 
     public fun resolve_query<CoinType>(
         query: &mut Query,
+        resolver_claim: Option<vector<u8>>,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        let proof_type_name = type_name::get<Proof>();
-        assert!(query.resolver_proof == proof_type_name, EInvalidResolverProofType);
+        assert!(query.coin_type == type_name::get<CoinType>(), EInvalidCoinType);
         
         if (query.status == QueryStatus::Submitted) {
             // Unchallenged resolution - submitter wins after liveness period
@@ -153,69 +150,43 @@ module reef::query {
             // Accept submitted claim as final
             query.resolved_claim = query.submitted_claim;
             
-            // Pay out all bonds to submitter (creator bond + submitter bond)
-            let bond_balance = dynamic_field::remove<BondKey, Balance<Bond>>(&mut query.id, BondKey());
-            let payout_coin = coin::from_balance(bond_balance, ctx);
-            let submitter_addr = *query.submitter.borrow();
-            transfer::public_transfer(payout_coin, submitter_addr);
-            
-            // Handle reward if it exists - goes to submitter
-            if (query.reward_type.is_some() && type_name::get<Reward>() == *query.reward_type.borrow()) {
-                if (dynamic_field::exists_(&query.id, RewardKey())) {
-                    let reward_balance = dynamic_field::remove<RewardKey, Balance<Reward>>(&mut query.id, RewardKey());
-                    let reward_coin = coin::from_balance(reward_balance, ctx);
-                    transfer::public_transfer(reward_coin, submitter_addr);
-                };
+            if (dynamic_field::exists_(&query.id, BondKey())) {
+                let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(&mut query.id, BondKey());
+                let payout_coin = bond_balance.into_coin(ctx);
+                transfer::public_transfer(payout_coin, *query.submitter.borrow());
             };
-            
         } else if (query.status == QueryStatus::Challenged) {
             // Disputed resolution - resolver decides winner
             assert!(query.submitted_claim.is_some(), EClaimNotSubmitted);
             assert!(query.challenger.is_some(), ENotAuthorized);
             
-            let submitter_addr = *query.submitter.borrow();
-            let challenger_addr = *query.challenger.borrow();
             let submitted_claim = *query.submitted_claim.borrow();
             
             // Determine winner by comparing resolver claim to submitted claim
             let submitter_wins = if (resolver_claim.is_some()) {
-                let resolver_claim = *resolver_claim.borrow();
-                // Submitter wins if resolver claim matches their submitted claim
-                submitted_claim == resolver_claim
+                let resolver_claim_data = *resolver_claim.borrow();
+                submitted_claim == resolver_claim_data
             } else {
-                // If no resolver claim provided, challenger wins (submitted claim is invalid)
                 false
             };
             
             if (submitter_wins) {
-                // Submitter wins: gets all bonds (creator + submitter + challenger)
                 query.resolved_claim = query.submitted_claim;
-                let bond_balance = dynamic_field::remove<BondKey, Balance<Bond>>(&mut query.id, BondKey());
-                let payout_coin = coin::from_balance(bond_balance, ctx);
-                transfer::public_transfer(payout_coin, submitter_addr);
-                
-                // Submitter also gets reward if it exists
-                if (query.reward_type.is_some() && type_name::get<Reward>() == *query.reward_type.borrow()) {
-                    if (dynamic_field::exists_(&query.id, RewardKey())) {
-                        let reward_balance = dynamic_field::remove<RewardKey, Balance<Reward>>(&mut query.id, RewardKey());
-                        let reward_coin = coin::from_balance(reward_balance, ctx);
-                        transfer::public_transfer(reward_coin, submitter_addr);
-                    };
+                if (dynamic_field::exists_(&query.id, BondKey())) {
+                    query.submitter.do!(|addr| {
+                        let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(&mut query.id, BondKey());
+                        let payout_coin = coin::from_balance(bond_balance, ctx);
+                        transfer::public_transfer(payout_coin, addr);
+                    })
                 };
             } else {
-                // Challenger wins: submitted claim was wrong, resolver claim becomes final
                 query.resolved_claim = resolver_claim;
-                let bond_balance = dynamic_field::remove<BondKey, Balance<Bond>>(&mut query.id, BondKey());
-                let payout_coin = coin::from_balance(bond_balance, ctx);
-                transfer::public_transfer(payout_coin, challenger_addr);
-                
-                // Creator gets reward back if it exists (challenger doesn't get reward)
-                if (query.reward_type.is_some() && type_name::get<Reward>() == *query.reward_type.borrow()) {
-                    if (dynamic_field::exists_(&query.id, RewardKey())) {
-                        let reward_balance = dynamic_field::remove<RewardKey, Balance<Reward>>(&mut query.id, RewardKey());
-                        let reward_coin = coin::from_balance(reward_balance, ctx);
-                        transfer::public_transfer(reward_coin, query.creator);
-                    };
+                if (dynamic_field::exists_(&query.id, BondKey())) {
+                    query.challenger.do!(|addr| {
+                        let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(&mut query.id, BondKey());
+                        let payout_coin = coin::from_balance(bond_balance, ctx);
+                        transfer::public_transfer(payout_coin, addr);
+                    })
                 };
             };
             
@@ -226,24 +197,20 @@ module reef::query {
         query.status = QueryStatus::Resolved;
     }
 
-    public fun add_reward<Reward>(query: &mut Query, reward: Coin<Reward>, _ctx: &mut TxContext) {
-        let reward_type = type_name::get<Reward>();
+    public fun add_reward<RewardType>(query: &mut Query, reward: Coin<RewardType>, _ctx: &mut TxContext) {
         assert!(query.status == QueryStatus::Requested, EInvalidQueryStatus);
         
-        // Initialize reward storage if it doesn't exist
         if (!dynamic_field::exists_(&query.id, RewardKey())) {
-            dynamic_field::add(&mut query.id, RewardKey(), balance::zero<Reward>());
+            dynamic_field::add(&mut query.id, RewardKey(), balance::zero<RewardType>());
         };
         
-        let reward_balance = dynamic_field::borrow_mut<RewardKey, Balance<Reward>>(&mut query.id, RewardKey());
+        let reward_balance = dynamic_field::borrow_mut<RewardKey, Balance<RewardType>>(&mut query.id, RewardKey());
         reward_balance.join(reward.into_balance());
-        
-        query.reward_type.fill(reward_type);
     }
 
     fun collect_bond<CoinType>(query: &mut Query, bond: Coin<CoinType>) {
         let bond_key = BondKey();
-        if (!dynamic_field::exists_(&mut query.id, bond_key)) {
+        if (!dynamic_field::exists_(&query.id, bond_key)) {
             dynamic_field::add(&mut query.id, bond_key, bond.into_balance());
         } else {
             let bond_balance = dynamic_field::borrow_mut<BondKey, Balance<CoinType>>(&mut query.id, bond_key);
@@ -274,13 +241,10 @@ module reef::query {
         query.liveness_ms
     }
     
-    public fun bond_type(query: &Query): TypeName {
-        query.bond_type
+    public fun coin_type(query: &Query): TypeName {
+        query.coin_type
     }
     
-    public fun reward_type(query: &Query): Option<TypeName> {
-        query.reward_type
-    }
     
     public fun submitter(query: &Query): Option<address> {
         query.submitter
@@ -302,26 +266,24 @@ module reef::query {
         query.challenge_time_ms
     }
     
-    public fun resolver_proof(query: &Query): TypeName {
-        query.resolver_proof
-    }
     
     public fun resolved_claim(query: &Query): Option<vector<u8>> {
         query.resolved_claim
     }
     
-    public fun bond_amount<Bond>(query: &Query): u64 {
+    public fun bond_amount<CoinType>(query: &Query): u64 {
+        assert!(query.coin_type == type_name::get<CoinType>(), EInvalidCoinType);
         if (dynamic_field::exists_(&query.id, BondKey())) {
-            let bond_balance = dynamic_field::borrow<BondKey, Balance<Bond>>(&query.id, BondKey());
+            let bond_balance = dynamic_field::borrow<BondKey, Balance<CoinType>>(&query.id, BondKey());
             bond_balance.value()
         } else {
             0
         }
     }
     
-    public fun reward_amount<Reward>(query: &Query): u64 {
+    public fun reward_amount<RewardType>(query: &Query): u64 {
         if (dynamic_field::exists_(&query.id, RewardKey())) {
-            let reward_balance = dynamic_field::borrow<RewardKey, Balance<Reward>>(&query.id, RewardKey());
+            let reward_balance = dynamic_field::borrow<RewardKey, Balance<RewardType>>(&query.id, RewardKey());
             reward_balance.value()
         } else {
             0

@@ -69,7 +69,7 @@ module reef::protocol {
 
     public(package) fun collect_fee<CoinType>(protocol: &mut Protocol, fee: Coin<CoinType>) {
         let fee_key = FeeKey(type_name::get<CoinType>());
-        if (!dynamic_field::exists_(&mut protocol.id, fee_key)) {
+        if (!dynamic_field::exists_(&protocol.id, fee_key)) {
             dynamic_field::add(&mut protocol.id, fee_key, fee.into_balance());
         } else {
             let fee_balance = dynamic_field::borrow_mut<FeeKey, Balance<CoinType>>(&mut protocol.id, fee_key);
