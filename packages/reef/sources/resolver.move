@@ -3,6 +3,7 @@ module reef::resolver;
 use std::type_name::{Self, TypeName};
 use sui::clock::Clock;
 use sui::package::Publisher;
+use reef::protocol::ProtocolCap;
 
 public struct Resolver has key {
     id: UID,
@@ -10,11 +11,9 @@ public struct Resolver has key {
     proof_type: TypeName,
 }
 
-public struct Resolution {
-    confidence: u64,
-    timestamp_ms: u64,
-    claim: vector<u8>,
-}
+public struct Resolution { confidence: u64, timestamp_ms: u64, claim: vector<u8> }
+
+// Error codes
 
 const EInvalidPublisher: u64 = 0;
 const EInvalidProofType: u64 = 1;
@@ -28,7 +27,7 @@ public fun create<Proof: drop>(_proof: Proof, publisher: Publisher, ctx: &mut Tx
 
     Resolver {
         id: object::new(ctx),
-        is_enabled: true,
+        is_enabled: false,
         proof_type: type_name::get<Proof>(),
     }
 }
@@ -37,11 +36,11 @@ public fun share_resolver(resolver: Resolver) {
     transfer::share_object(resolver)
 }
 
-public fun enable(resolver: &mut Resolver) {
+public fun enable(_: ProtocolCap, resolver: &mut Resolver) {
     resolver.is_enabled = true;
 }
 
-public fun disable(resolver: &mut Resolver) {
+public fun disable(_: ProtocolCap, resolver: &mut Resolver) {
     resolver.is_enabled = false;
 }
 
