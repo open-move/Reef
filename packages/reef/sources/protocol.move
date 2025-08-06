@@ -1,12 +1,13 @@
 module reef::protocol;
 
 use std::type_name::{Self, TypeName};
-use sui::balance::Balance;
+
 use sui::coin::Coin;
 use sui::dynamic_field;
-use sui::package::{Self, Publisher};
+use sui::balance::Balance;
 use sui::vec_map::{Self, VecMap};
 use sui::vec_set::{Self, VecSet};
+use sui::package::{Self, Publisher};
 
 const EInvalidPublisher: u64 = 0;
 const EBondTypeNotAllowed: u64 = 1;

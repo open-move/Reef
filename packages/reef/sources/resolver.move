@@ -1,8 +1,11 @@
 module reef::resolver;
 
 use std::type_name::{Self, TypeName};
+
 use sui::clock::Clock;
 use sui::package::Publisher;
+
+use reef::reef::Query;
 use reef::protocol::ProtocolCap;
 
 public struct Resolver has key {
@@ -11,13 +14,19 @@ public struct Resolver has key {
     proof_type: TypeName,
 }
 
-public struct Resolution { confidence: u64, timestamp_ms: u64, claim: vector<u8> }
+public struct Resolution has drop {
+    query_id: ID,
+    confidence: u64,
+    timestamp_ms: u64,
+    claim: vector<u8>,
+}
 
 // Error codes
 
 const EInvalidPublisher: u64 = 0;
 const EInvalidProofType: u64 = 1;
-const EInvalidConfidence: u64 = 2;
+const EResolverDisabled: u64 = 3;
+const EInvalidConfidence: u64 = 4;
 
 const PCT_PRECISION: u64 = 10_000;
 
@@ -44,26 +53,25 @@ public fun disable(_: ProtocolCap, resolver: &mut Resolver) {
     resolver.is_enabled = false;
 }
 
-public fun create_resolution<Proof: drop>(
+public fun make_resolution<Proof: drop>(
     resolver: &Resolver,
+    query: &Query,
     _proof: Proof,
     claim: vector<u8>,
     confidence: u64,
     clock: &Clock,
 ): Resolution {
+    assert!(resolver.is_enabled, EResolverDisabled);
     assert!(resolver.proof_type == type_name::get<Proof>(), EInvalidProofType);
+    assert!(query.resolver_type() == resolver.proof_type, EInvalidProofType);
     assert!(confidence <= PCT_PRECISION, EInvalidConfidence);
 
     Resolution {
         claim,
         confidence,
+        query_id: object::id(query),
         timestamp_ms: clock.timestamp_ms(),
     }
-}
-
-public fun destroy_resolution(resolution: Resolution): (vector<u8>, u64, u64) {
-    let Resolution { claim, timestamp_ms, confidence } = resolution;
-    (claim, timestamp_ms, confidence)
 }
 
 public fun is_enabled(resolver: &Resolver): bool {
@@ -74,14 +82,19 @@ public fun proof_type(resolver: &Resolver): TypeName {
     resolver.proof_type
 }
 
+// View functions for Resolution
+public fun resolution_query_id(resolution: &Resolution): ID {
+    resolution.query_id
+}
+
 public fun resolution_claim(resolution: &Resolution): vector<u8> {
     resolution.claim
 }
 
-public fun resolution_timestamp_ms(resolution: &Resolution): u64 {
-    resolution.timestamp_ms
-}
-
 public fun resolution_confidence(resolution: &Resolution): u64 {
     resolution.confidence
+}
+
+public fun resolution_timestamp_ms(resolution: &Resolution): u64 {
+    resolution.timestamp_ms
 }
