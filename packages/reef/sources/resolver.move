@@ -5,7 +5,6 @@ use std::type_name::{Self, TypeName};
 use sui::clock::Clock;
 use sui::package::Publisher;
 
-use reef::reef::Query;
 use reef::protocol::ProtocolCap;
 
 public struct Resolver has key {
@@ -19,6 +18,7 @@ public struct Resolution has drop {
     confidence: u64,
     timestamp_ms: u64,
     claim: vector<u8>,
+    proof_type: TypeName,
 }
 
 // Error codes
@@ -45,31 +45,31 @@ public fun share_resolver(resolver: Resolver) {
     transfer::share_object(resolver)
 }
 
-public fun enable(_: ProtocolCap, resolver: &mut Resolver) {
+public fun enable(_: &ProtocolCap, resolver: &mut Resolver) {
     resolver.is_enabled = true;
 }
 
-public fun disable(_: ProtocolCap, resolver: &mut Resolver) {
+public fun disable(_: &ProtocolCap, resolver: &mut Resolver) {
     resolver.is_enabled = false;
 }
 
 public fun make_resolution<Proof: drop>(
     resolver: &Resolver,
-    query: &Query,
     _proof: Proof,
+    query_id: ID,
     claim: vector<u8>,
     confidence: u64,
     clock: &Clock,
 ): Resolution {
     assert!(resolver.is_enabled, EResolverDisabled);
     assert!(resolver.proof_type == type_name::get<Proof>(), EInvalidProofType);
-    assert!(query.resolver_type() == resolver.proof_type, EInvalidProofType);
     assert!(confidence <= PCT_PRECISION, EInvalidConfidence);
 
     Resolution {
         claim,
+        query_id,
         confidence,
-        query_id: object::id(query),
+        proof_type: resolver.proof_type,
         timestamp_ms: clock.timestamp_ms(),
     }
 }
@@ -97,4 +97,8 @@ public fun resolution_confidence(resolution: &Resolution): u64 {
 
 public fun resolution_timestamp_ms(resolution: &Resolution): u64 {
     resolution.timestamp_ms
+}
+
+public fun resolution_proof_type(resolution: &Resolution): TypeName {
+    resolution.proof_type
 }

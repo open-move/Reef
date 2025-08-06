@@ -1,11 +1,13 @@
 module reef::reef;
 
-use reef::protocol::Protocol;
 use std::type_name::{Self, TypeName};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::coin::{Self, Coin};
 use sui::dynamic_field;
+
+use reef::protocol::Protocol;
+use reef::resolver::{Self, Resolution};
 
 const EInsufficientBond: u64 = 0;
 const EInvalidQueryStatus: u64 = 1;
@@ -17,6 +19,9 @@ const EEmptyTopic: u64 = 10;
 const EEmptyMessage: u64 = 10;
 const EClaimNotSubmitted: u64 = 12;
 const EInsufficientFeeAmount: u64 = 15;
+const EWrongQuery: u64 = 16;
+const EWrongResolverType: u64 = 17;
+const EResolutionIsSome: u64 = 18;
 
 public struct Query has key {
     id: UID,
@@ -41,6 +46,7 @@ public struct Query has key {
     status: QueryStatus,
     /// The claim that is finalized after resolution
     resolved_claim: Option<vector<u8>>,
+    resolver_type: Option<TypeName>
 }
 
 public enum QueryStatus has copy, drop, store {
@@ -87,6 +93,7 @@ public fun submit_query<CoinType>(
         challenger: option::none(),
         challenge_time_ms: option::none(),
         resolved_claim: option::none(),
+        resolver_type: option::none(),
         status: QueryStatus::Requested,
     }
 }
@@ -134,13 +141,15 @@ public fun challenge_claim<CoinType>(
 
 public fun resolve_query<CoinType>(
     query: &mut Query,
-    resolver_claim: Option<vector<u8>>,
+    resolution: Option<Resolution>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert!(query.coin_type == type_name::get<CoinType>(), EInvalidCoinType);
 
     if (query.status == QueryStatus::Submitted) {
+        assert!(option::is_none(&resolution), EResolutionIsSome);
+
         // Unchallenged resolution - submitter wins after liveness period
         let current_time_ms = clock.timestamp_ms();
         let submission_time_ms = *query.submission_time_ms.borrow();
@@ -162,16 +171,22 @@ public fun resolve_query<CoinType>(
         // Disputed resolution - resolver decides winner
         assert!(query.submitted_claim.is_some(), EClaimNotSubmitted);
         assert!(query.challenger.is_some(), ENotAuthorized);
+        assert!(resolution.is_some(), ENotAuthorized); // Resolution required for challenged queries
 
         let submitted_claim = *query.submitted_claim.borrow();
-
-        // Determine winner by comparing resolver claim to submitted claim
-        let submitter_wins = if (resolver_claim.is_some()) {
-            let resolver_claim_data = *resolver_claim.borrow();
-            submitted_claim == resolver_claim_data
-        } else {
-            false
+        let res = resolution.borrow();
+        
+        // Validate resolution is for this query
+        assert!(resolver::resolution_query_id(res) == query.id.to_inner(), EWrongQuery);
+        
+        // Validate resolver type matches if query specifies one
+        if (query.resolver_type.is_some()) {
+            let required_type = *query.resolver_type.borrow();
+            assert!(resolver::resolution_proof_type(res) == required_type, EWrongResolverType);
         };
+        
+        let resolver_claim = resolver::resolution_claim(res);
+        let submitter_wins = submitted_claim == resolver_claim;
 
         if (submitter_wins) {
             query.resolved_claim = query.submitted_claim;
@@ -186,7 +201,7 @@ public fun resolve_query<CoinType>(
                 })
             };
         } else {
-            query.resolved_claim = resolver_claim;
+            query.resolved_claim = option::some(resolver_claim);
             if (dynamic_field::exists_(&query.id, BondKey())) {
                 query.challenger.do!(|addr| {
                     let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(
@@ -284,6 +299,10 @@ public fun challenge_time_ms(query: &Query): Option<u64> {
 
 public fun resolved_claim(query: &Query): Option<vector<u8>> {
     query.resolved_claim
+}
+
+public fun resolver_type(query: &Query): Option<TypeName> {
+    query.resolver_type
 }
 
 public fun bond_amount<CoinType>(query: &Query): u64 {
