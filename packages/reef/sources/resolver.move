@@ -1,11 +1,9 @@
 module reef::resolver;
 
+use reef::protocol::ProtocolCap;
 use std::type_name::{Self, TypeName};
-
 use sui::clock::Clock;
 use sui::package::Publisher;
-
-use reef::protocol::ProtocolCap;
 
 public struct Resolver has key {
     id: UID,
@@ -20,6 +18,12 @@ public struct Resolution has drop {
     claim: vector<u8>,
     proof_type: TypeName,
 }
+
+public use fun resolution_claim as Resolution.claim;
+public use fun resolution_query_id as Resolution.query_id;
+public use fun resolution_confidence as Resolution.confidence;
+public use fun resolution_proof_type as Resolution.proof_type;
+public use fun resolution_timestamp_ms as Resolution.timestamp_ms;
 
 // Error codes
 

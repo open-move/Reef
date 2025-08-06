@@ -1,13 +1,14 @@
 module reef::reef;
 
 use std::type_name::{Self, TypeName};
-use sui::balance::{Self, Balance};
-use sui::clock::Clock;
-use sui::coin::{Self, Coin};
-use sui::dynamic_field;
 
+use sui::balance::{Self, Balance};
+use sui::dynamic_field;
+use sui::clock::Clock;
+use sui::coin::Coin;
+
+use reef::resolver::Resolution;
 use reef::protocol::Protocol;
-use reef::resolver::{Self, Resolution};
 
 const EInsufficientBond: u64 = 0;
 const EInvalidQueryStatus: u64 = 1;
@@ -22,6 +23,8 @@ const EInsufficientFeeAmount: u64 = 15;
 const EWrongQuery: u64 = 16;
 const EWrongResolverType: u64 = 17;
 const EResolutionIsSome: u64 = 18;
+const ECannotChallengeSelf: u64 = 19;
+const EStaleResolution: u64 = 20;
 
 public struct Query has key {
     id: UID,
@@ -46,7 +49,7 @@ public struct Query has key {
     status: QueryStatus,
     /// The claim that is finalized after resolution
     resolved_claim: Option<vector<u8>>,
-    resolver_type: Option<TypeName>
+    resolver_type: Option<TypeName>,
 }
 
 public enum QueryStatus has copy, drop, store {
@@ -71,8 +74,8 @@ public fun submit_query<CoinType>(
     let coin_type = type_name::get<CoinType>();
 
     assert!(liveness_ms > 0, EInvalidLiveness);
-    assert!(vector::length(&topic) > 0, EEmptyTopic);
-    assert!(vector::length(&metadata) > 0, EEmptyMessage);
+    assert!(topic.length() > 0, EEmptyTopic);
+    assert!(metadata.length() > 0, EEmptyMessage);
     assert!(protocol.is_allowed_coin_type(coin_type), EInvalidCoinType);
     assert!(bond_amount >= protocol.minimum_bond(coin_type), EInsufficientBond);
     assert!(fee.value() >= protocol.fee_amount(coin_type), EInsufficientFeeAmount);
@@ -124,6 +127,7 @@ public fun challenge_claim<CoinType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert!(ctx.sender() != *query.submitter.borrow(), ECannotChallengeSelf);
     assert!(query.status == QueryStatus::Submitted, EInvalidQueryStatus);
     assert!(query.submission_time_ms.is_some(), EClaimNotSubmitted);
 
@@ -141,80 +145,79 @@ public fun challenge_claim<CoinType>(
 
 public fun resolve_query<CoinType>(
     query: &mut Query,
-    resolution: Option<Resolution>,
+    resolution_maybe: Option<Resolution>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert!(query.coin_type == type_name::get<CoinType>(), EInvalidCoinType);
 
-    if (query.status == QueryStatus::Submitted) {
-        assert!(option::is_none(&resolution), EResolutionIsSome);
+    match (query.status) {
+        QueryStatus::Submitted => {
+            assert!(resolution_maybe.is_none(), EResolutionIsSome);
 
-        // Unchallenged resolution - submitter wins after liveness period
-        let current_time_ms = clock.timestamp_ms();
-        let submission_time_ms = *query.submission_time_ms.borrow();
-        let elapsed_time_ms = current_time_ms - submission_time_ms;
-        assert!(elapsed_time_ms >= query.liveness_ms, ELivenessNotExpired);
+            let current_time_ms = clock.timestamp_ms();
+            let submission_time_ms = *query.submission_time_ms.borrow();
+            let elapsed_time_ms = current_time_ms - submission_time_ms;
+            assert!(elapsed_time_ms >= query.liveness_ms, ELivenessNotExpired);
 
-        // Accept submitted claim as final
-        query.resolved_claim = query.submitted_claim;
-
-        if (dynamic_field::exists_(&query.id, BondKey())) {
-            let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(
-                &mut query.id,
-                BondKey(),
-            );
-            let payout_coin = bond_balance.into_coin(ctx);
-            transfer::public_transfer(payout_coin, *query.submitter.borrow());
-        };
-    } else if (query.status == QueryStatus::Challenged) {
-        // Disputed resolution - resolver decides winner
-        assert!(query.submitted_claim.is_some(), EClaimNotSubmitted);
-        assert!(query.challenger.is_some(), ENotAuthorized);
-        assert!(resolution.is_some(), ENotAuthorized); // Resolution required for challenged queries
-
-        let submitted_claim = *query.submitted_claim.borrow();
-        let res = resolution.borrow();
-        
-        // Validate resolution is for this query
-        assert!(resolver::resolution_query_id(res) == query.id.to_inner(), EWrongQuery);
-        
-        // Validate resolver type matches if query specifies one
-        if (query.resolver_type.is_some()) {
-            let required_type = *query.resolver_type.borrow();
-            assert!(resolver::resolution_proof_type(res) == required_type, EWrongResolverType);
-        };
-        
-        let resolver_claim = resolver::resolution_claim(res);
-        let submitter_wins = submitted_claim == resolver_claim;
-
-        if (submitter_wins) {
+            // Accept submitted claim as final
             query.resolved_claim = query.submitted_claim;
+
             if (dynamic_field::exists_(&query.id, BondKey())) {
-                query.submitter.do!(|addr| {
-                    let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(
-                        &mut query.id,
-                        BondKey(),
-                    );
-                    let payout_coin = coin::from_balance(bond_balance, ctx);
-                    transfer::public_transfer(payout_coin, addr);
-                })
+                let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(
+                    &mut query.id,
+                    BondKey(),
+                );
+                let payout_coin = bond_balance.into_coin(ctx);
+                transfer::public_transfer(payout_coin, *query.submitter.borrow());
             };
-        } else {
-            query.resolved_claim = option::some(resolver_claim);
-            if (dynamic_field::exists_(&query.id, BondKey())) {
-                query.challenger.do!(|addr| {
-                    let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(
-                        &mut query.id,
-                        BondKey(),
-                    );
-                    let payout_coin = coin::from_balance(bond_balance, ctx);
-                    transfer::public_transfer(payout_coin, addr);
-                })
-            };
-        };
-    } else {
-        abort EInvalidQueryStatus
+        },
+        QueryStatus::Challenged => {
+            assert!(query.submitted_claim.is_some(), EClaimNotSubmitted);
+            assert!(query.challenger.is_some(), ENotAuthorized);
+
+            resolution_maybe.do!(|resolution| {
+                let submitted_claim = *query.submitted_claim.borrow();
+
+                assert!(resolution.query_id() == query.id.to_inner(), EWrongQuery);
+                assert!(
+                    resolution.timestamp_ms() > *query.challenge_time_ms.borrow(),
+                    EStaleResolution,
+                );
+                query.resolver_type.do_ref!(|resolver_type| {
+                    assert!(resolution.proof_type() == *resolver_type, EWrongResolverType);
+                });
+
+                let submitter_wins = submitted_claim == resolution.claim();
+                if (submitter_wins) {
+                    query.resolved_claim = query.submitted_claim;
+                    if (dynamic_field::exists_(&query.id, BondKey())) {
+                        query.submitter.do!(|addr| {
+                            let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(
+                                &mut query.id,
+                                BondKey(),
+                            );
+
+                            let payout_coin = bond_balance.into_coin(ctx);
+                            transfer::public_transfer(payout_coin, addr);
+                        })
+                    };
+                } else {
+                    query.resolved_claim = option::some(resolution.claim());
+                    if (dynamic_field::exists_(&query.id, BondKey())) {
+                        query.challenger.do!(|addr| {
+                            let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(
+                                &mut query.id,
+                                BondKey(),
+                            );
+                            let payout_coin = bond_balance.into_coin(ctx);
+                            transfer::public_transfer(payout_coin, addr);
+                        })
+                    };
+                };
+            });
+        },
+        _ => abort EInvalidQueryStatus,
     };
 
     query.status = QueryStatus::Resolved;
