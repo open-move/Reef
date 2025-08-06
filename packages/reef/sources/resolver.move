@@ -1,24 +1,31 @@
 module reef::resolver;
 
 use std::type_name::{Self, TypeName};
+use sui::clock::Clock;
+use sui::package::Publisher;
 
 public struct Resolver has key {
     id: UID,
-    instance_id: ID,
     is_enabled: bool,
     proof_type: TypeName,
 }
 
 public struct Resolution {
+    confidence: u64,
+    timestamp_ms: u64,
     claim: vector<u8>,
 }
 
-const EInvalidProofType: u64 = 0;
+const EInvalidPublisher: u64 = 0;
+const EInvalidProofType: u64 = 1;
+const EInvalidConfidence: u64 = 2;
 
-public fun create<Proof: drop>(_: Proof, instance_id: ID, ctx: &mut TxContext): Resolver {
+public fun create<Proof: drop>(_proof: Proof, publisher: Publisher, ctx: &mut TxContext): Resolver {
+    assert!(publisher.from_module<Proof>(), EInvalidPublisher);
+    publisher.burn();
+
     Resolver {
         id: object::new(ctx),
-        instance_id,
         is_enabled: true,
         proof_type: type_name::get<Proof>(),
     }
@@ -37,18 +44,43 @@ public fun disable(resolver: &mut Resolver) {
 }
 
 public fun create_resolution<Proof: drop>(
-    resolver: &mut Resolver,
-    _: Proof,
+    resolver: &Resolver,
+    _proof: Proof,
     claim: vector<u8>,
+    confidence: u64,
+    clock: &Clock,
 ): Resolution {
     assert!(resolver.proof_type == type_name::get<Proof>(), EInvalidProofType);
+    assert!(confidence <= 100, EInvalidConfidence);
 
     Resolution {
         claim,
+        confidence,
+        timestamp_ms: clock.timestamp_ms(),
     }
 }
 
-public fun destroy_resolution(resolution: Resolution): vector<u8> {
-    let Resolution { claim } = resolution;
-    claim
+public fun destroy_resolution(resolution: Resolution): (vector<u8>, u64, u64) {
+    let Resolution { claim, timestamp_ms, confidence } = resolution;
+    (claim, timestamp_ms, confidence)
+}
+
+public fun is_enabled(resolver: &Resolver): bool {
+    resolver.is_enabled
+}
+
+public fun proof_type(resolver: &Resolver): TypeName {
+    resolver.proof_type
+}
+
+public fun resolution_claim(resolution: &Resolution): vector<u8> {
+    resolution.claim
+}
+
+public fun resolution_timestamp_ms(resolution: &Resolution): u64 {
+    resolution.timestamp_ms
+}
+
+public fun resolution_confidence(resolution: &Resolution): u64 {
+    resolution.confidence
 }
