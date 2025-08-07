@@ -151,7 +151,7 @@ public fun resolve_query<CoinType>(
 ) {
     assert!(query.coin_type == type_name::get<CoinType>(), EInvalidCoinType);
 
-    match (query.status) {
+   let resolved_claim = match (query.status) {
         QueryStatus::Submitted => {
             assert!(resolution_maybe.is_none(), EResolutionIsSome);
 
@@ -171,11 +171,14 @@ public fun resolve_query<CoinType>(
                 let payout_coin = bond_balance.into_coin(ctx);
                 transfer::public_transfer(payout_coin, *query.submitter.borrow());
             };
+
+            query.submitted_claim
         },
         QueryStatus::Challenged => {
             assert!(query.submitted_claim.is_some(), EClaimNotSubmitted);
             assert!(query.challenger.is_some(), ENotAuthorized);
 
+            let mut resolved_claim = query.submitted_claim;
             resolution_maybe.do!(|resolution| {
                 let submitted_claim = *query.submitted_claim.borrow();
 
@@ -188,9 +191,7 @@ public fun resolve_query<CoinType>(
                     assert!(resolution.proof_type() == *resolver_type, EWrongResolverType);
                 });
 
-                let submitter_wins = submitted_claim == resolution.claim();
-                if (submitter_wins) {
-                    query.resolved_claim = query.submitted_claim;
+                if (submitted_claim == resolution.claim()) {
                     if (dynamic_field::exists_(&query.id, BondKey())) {
                         query.submitter.do!(|addr| {
                             let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(
@@ -203,7 +204,7 @@ public fun resolve_query<CoinType>(
                         })
                     };
                 } else {
-                    query.resolved_claim = option::some(resolution.claim());
+                    resolved_claim = option::some(resolution.claim());
                     if (dynamic_field::exists_(&query.id, BondKey())) {
                         query.challenger.do!(|addr| {
                             let bond_balance = dynamic_field::remove<BondKey, Balance<CoinType>>(
@@ -216,11 +217,14 @@ public fun resolve_query<CoinType>(
                     };
                 };
             });
+
+            resolved_claim
         },
         _ => abort EInvalidQueryStatus,
     };
 
     query.status = QueryStatus::Resolved;
+    query.resolved_claim = resolved_claim;
 }
 
 public fun add_reward<RewardType>(

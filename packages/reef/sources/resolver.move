@@ -32,7 +32,7 @@ const EInvalidProofType: u64 = 1;
 const EResolverDisabled: u64 = 3;
 const EInvalidConfidence: u64 = 4;
 
-const PCT_PRECISION: u64 = 10_000;
+const PRECISION_FACTOR: u64 = 10_000;
 
 public fun create<Proof: drop>(_proof: Proof, publisher: Publisher, ctx: &mut TxContext): Resolver {
     assert!(publisher.from_module<Proof>(), EInvalidPublisher);
@@ -67,7 +67,7 @@ public fun make_resolution<Proof: drop>(
 ): Resolution {
     assert!(resolver.is_enabled, EResolverDisabled);
     assert!(resolver.proof_type == type_name::get<Proof>(), EInvalidProofType);
-    assert!(confidence <= PCT_PRECISION, EInvalidConfidence);
+    assert!(confidence <= PRECISION_FACTOR, EInvalidConfidence);
 
     Resolution {
         claim,
