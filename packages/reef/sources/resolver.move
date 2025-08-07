@@ -25,6 +25,8 @@ public use fun resolution_confidence as Resolution.confidence;
 public use fun resolution_proof_type as Resolution.proof_type;
 public use fun resolution_timestamp_ms as Resolution.timestamp_ms;
 
+public use fun share_resolver as Resolver.share;
+
 // Error codes
 
 const EInvalidPublisher: u64 = 0;
