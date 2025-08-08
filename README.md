@@ -131,10 +131,10 @@ submitted_claim_data == resolver_claim_data
 - Resolution can happen immediately after `liveness_ms` expires for unchallenged queries
 
 ### Resolver Framework
-Resolvers are validated by `TypeName` matching against whitelisted proof types. Each resolver implementation provides:
+Resolvers are validated by `TypeName` matching against the resolver proof type. Each resolver implementation provides:
 - Custom proof object type
 - Resolution logic for determining correct claims
-- Confidence and timestamp support for enhanced validation
+- Timestamp support for enhanced validation
 - Integration with core oracle for bond distribution
 
 ## Usage
@@ -154,12 +154,11 @@ The optimistic model works best when the data source is generally reliable and d
 - Uses BCS serialization for claim data
 - Dynamic fields for bond storage
 - Minimal state transitions
-- Batch operations where possible
 
 ### Extensibility
-New resolver types can be added by:
-1. Creating a unique proof type
-2. Getting it whitelisted via governance
+New resolvers can be added by:
+1. Creating a proof type (within the resolver implementation module)
+2. Getting it enabled via governance
 3. Implementing resolution logic
 4. Calling `resolve_query()` with the proof
 
