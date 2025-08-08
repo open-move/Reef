@@ -1,6 +1,6 @@
 # Reef Oracle
 
-An optimistic oracle system for the Sui blockchain that allows smart contracts to request off-chain data and assume submitted claims are correct unless challenged.
+An optimistic oracle system for Sui that allows smart contracts to request off-chain data and assume submitted claims are correct unless challenged.
 
 ## How It Works
 
@@ -74,8 +74,8 @@ Rewards → Creator (refunded)
 ### Config Module
 Manages global system settings including whitelisted resolver types, allowed bond/reward tokens, and minimum bond amounts per token type.
 
-### Claim Module  
-Provides type-safe data representation with support for Boolean, Integer, String, Enum, and Bytes claim types. Uses BCS serialization for efficiency.
+### Data Handling
+Claims are simple byte vectors (`vector<u8>`) allowing maximum flexibility. Clients handle their own data encoding/decoding - oracle only compares bytes for equality.
 
 ### Query Module
 Handles the complete query lifecycle from creation through resolution. Manages bonds, rewards, and state transitions.
@@ -103,8 +103,7 @@ Optional rewards can be added to queries to incentivize participation. Rewards g
 ## Key Features
 
 - **Optimistic**: Assumes answers are valid unless disputed, minimizing on-chain activity
-- **Type-safe**: Strongly typed claims eliminate ambiguity 
-- **Flexible**: Configurable liveness periods, bond amounts, and resolver types
+- **Flexible**: Raw byte claims support any data format plus configurable liveness periods, bond amounts, and resolver types
 - **Economic security**: Bond requirements create strong incentives for honest behavior
 - **Modular**: Easy to add new resolver types and token support
 
@@ -120,11 +119,10 @@ Queries progress through defined states:
 ### Bond Management
 Bonds are stored in dynamic fields using `BondKey()` and `Balance<T>` objects for gas efficiency. The system supports multiple token types with configurable minimum amounts per `TypeName`.
 
-### Claim Validation
-Claims are BCS-encoded with type validation at submission. The resolver comparison uses exact data and type matching:
+### Data Comparison
+Claims are raw byte vectors compared directly for equality:
 ```
-submitted_claim.data() == resolver_claim.data() && 
-submitted_claim.type_() == resolver_claim.type_()
+submitted_claim_data == resolver_claim_data
 ```
 
 ### Timing Mechanics
@@ -136,6 +134,7 @@ submitted_claim.type_() == resolver_claim.type_()
 Resolvers are validated by `TypeName` matching against whitelisted proof types. Each resolver implementation provides:
 - Custom proof object type
 - Resolution logic for determining correct claims
+- Confidence and timestamp support for enhanced validation
 - Integration with core oracle for bond distribution
 
 ## Usage
@@ -163,3 +162,23 @@ New resolver types can be added by:
 2. Getting it whitelisted via governance
 3. Implementing resolution logic
 4. Calling `resolve_query()` with the proof
+
+## Getting Started
+
+### Prerequisites
+- [Sui CLI](https://docs.sui.io/guides/developer/getting-started/sui-install) installed
+
+### Building
+```bash
+cd packages/reef
+sui move build
+```
+
+### Testing
+```bash
+sui move test
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
