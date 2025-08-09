@@ -1,46 +1,98 @@
+/// This module manages the protocol level config for Reef.
+///
+/// Key responsibilities:
+/// 1. Economic policy (burn rates, minimum bonds, fees)
+/// 3. Content moderation (topic and coin type whitelists)
+/// 4. Resolver management (which types can resolve disputes)
+/// 5. Treasury management (collecting fees and burned bonds)
+/// 2. Security policies (minimum challenge periods, submission delays)
+///
+/// The Protocol struct is shared globally so all queries can reference the same
+/// config.
 module reef::protocol;
 
 use std::type_name::{Self, TypeName};
-
+use sui::balance::Balance;
 use sui::coin::Coin;
 use sui::dynamic_field;
-use sui::balance::Balance;
+use sui::package::{Self, Publisher};
+use sui::table::{Self, Table};
 use sui::vec_map::{Self, VecMap};
 use sui::vec_set::{Self, VecSet};
-use sui::package::{Self, Publisher};
 
+// ====== Error Codes =====
+
+/// Publisher doesn't match the protocol module
 const EInvalidPublisher: u64 = 0;
+/// Trying to use a coin type that isn't whitelisted
 const EBondTypeNotAllowed: u64 = 1;
 
+// ===== Constants ======
+
+/// 50% burn rate on disputes
+const DEFAULT_BURN_RATE_BPS: u64 = 5_000;
+/// 20 hours minimum for challenges
+const DEFAULT_MINIMUM_LIVENESS_MS: u64 = 72_000_00;
+/// 5 minutes before claims can be submitted
+const DEFAULT_MINIMUM_SUBMISSION_DELAY_MS: u64 = 3_000_00;
+
+// ===== Structs =====
+
+/// One-time witness for protocol initialization
 public struct PROTOCOL() has drop;
 
+/// The main protocol config object.
+///
+/// This shared object contains all the global settings that govern how the oracle works.
 public struct Protocol has key {
     id: UID,
+    /// How much of losing bonds get burned (in basis points)
+    burn_rate_bps: u64,
+    /// Minimum time challengers have to challenge claims
+    minimum_liveness_ms: u64,
+    /// Delay after query creation before claims can be submitted
+    minimum_submission_delay_ms: u64,
+    /// Which resolver types are authorized to resolve disputes
     resolver_proofs: VecSet<TypeName>,
-    fee_amounts: VecMap<TypeName, u64>,
+    /// Which coin types can be used for bonds/fees
     allowed_coin_types: VecSet<TypeName>,
+    /// Which topics are allowed for new queries
+    allowed_topics: Table<vector<u8>, bool>,
+    /// Protocol fees for creating queries
+    fee_amounts: VecMap<TypeName, u64>,
+    /// Minimum bond amounts for different coin types
     minimum_bond_map: VecMap<TypeName, u64>,
 }
 
+/// Admin cap for protocol governance.
 public struct ProtocolCap has key {
     id: UID,
 }
 
+/// Key for storing collected fees in dynamic fields
 public struct FeeKey(TypeName) has copy, drop, store;
 
-fun init(p: PROTOCOL, ctx: &mut TxContext) {
-    package::claim_and_keep(p, ctx);
+fun init(otw: PROTOCOL, ctx: &mut TxContext) {
+    package::claim_and_keep(otw, ctx);
 }
 
+/// Initializes the protocol.
+///
+/// This creates the Protocol object with the defaults and protocol cap.
+/// The publisher ensures this can only be called by initialized once as it is deleted during the initialization process.
 public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, ProtocolCap) {
     assert!(publisher.from_module<PROTOCOL>(), EInvalidPublisher);
 
     let protocol = Protocol {
         id: object::new(ctx),
         fee_amounts: vec_map::empty(),
+        allowed_topics: table::new(ctx),
         resolver_proofs: vec_set::empty(),
         minimum_bond_map: vec_map::empty(),
         allowed_coin_types: vec_set::empty(),
+        burn_rate_bps: DEFAULT_BURN_RATE_BPS,
+        minimum_liveness_ms: DEFAULT_MINIMUM_LIVENESS_MS,
+        minimum_submission_delay_ms: DEFAULT_MINIMUM_SUBMISSION_DELAY_MS,
     };
 
     publisher.burn();
@@ -77,6 +129,28 @@ public fun set_fee_amount(
     }
 }
 
+public fun set_minimum_liveness(
+    protocol: &mut Protocol,
+    _: &ProtocolCap,
+    minimum_liveness_ms: u64,
+) {
+    protocol.minimum_liveness_ms = minimum_liveness_ms;
+}
+
+public fun set_burn_rate(protocol: &mut Protocol, _: &ProtocolCap, burn_rate_bps: u64) {
+    assert!(burn_rate_bps <= 10000, 0); // Max 100%
+    protocol.burn_rate_bps = burn_rate_bps;
+}
+
+public fun set_min_submission_delay(
+    protocol: &mut Protocol,
+    _: &ProtocolCap,
+    min_submission_delay_ms: u64,
+) {
+    protocol.minimum_submission_delay_ms = min_submission_delay_ms;
+}
+
+/// Collects protocol fees from query creation.
 public(package) fun collect_fee<CoinType>(protocol: &mut Protocol, fee: Coin<CoinType>) {
     let fee_key = FeeKey(type_name::get<CoinType>());
     if (!dynamic_field::exists_(&protocol.id, fee_key)) {
@@ -86,18 +160,23 @@ public(package) fun collect_fee<CoinType>(protocol: &mut Protocol, fee: Coin<Coi
             &mut protocol.id,
             fee_key,
         );
+
         fee_balance.join(fee.into_balance());
     }
 }
 
+/// Collects burned bonds from challenge resolutions.
+public(package) fun collect_burned_bond<CoinType>(protocol: &mut Protocol, bond: Coin<CoinType>) {
+    // Burned bonds go to the treasury too
+    protocol.collect_fee(bond)
+}
+
 /// Adds a new resolver proof type to the protocol.
-/// This allows the system to recognize and validate resolutions for claims and challenges.
 public fun add_resolver_proof(protocol: &mut Protocol, _: &ProtocolCap, resolver_proof: TypeName) {
     protocol.resolver_proofs.insert(resolver_proof);
 }
 
 /// Removes a resolver proof type from the protocol.
-/// This is used to clean up resolver proofs that are no longer valid or needed.
 public fun remove_resolver_proof(
     protocol: &mut Protocol,
     _: &ProtocolCap,
@@ -107,13 +186,21 @@ public fun remove_resolver_proof(
 }
 
 /// Adds a new allowed reward type to the protocol.
-/// This allows the system to recognize and accept rewards of this type for queries.
 public fun add_allowed_coin_type(protocol: &mut Protocol, _: &ProtocolCap, reward_type: TypeName) {
     protocol.allowed_coin_types.insert(reward_type);
 }
 
+/// Adds a topic to the allowed list.
+public fun add_allowed_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: vector<u8>) {
+    protocol.allowed_topics.add(topic, true);
+}
+
+/// Removes a topic from the allowed list.
+public fun remove_allowed_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: vector<u8>) {
+    protocol.allowed_topics.remove(topic);
+}
+
 /// Removes an allowed reward type from the protocol.
-/// This is used to clean up reward types that are no longer valid or needed.
 public fun remove_allowed_coin_type(
     protocol: &mut Protocol,
     _: &ProtocolCap,
@@ -124,22 +211,34 @@ public fun remove_allowed_coin_type(
 
 // === View Functions ===
 
-/// Checks if the given resolver proof type is recognized by the protocol.
 public fun is_resolver_proof(protocol: &Protocol, resolver_proof: TypeName): bool {
     protocol.resolver_proofs.contains(&resolver_proof)
 }
 
-/// Checks if the given reward type is allowed in the system.
 public fun is_allowed_coin_type(protocol: &Protocol, reward_type: TypeName): bool {
     protocol.allowed_coin_types.contains(&reward_type)
 }
 
-/// Retrieves the minimum bond amount required for a specific coin type.
+public fun is_topic_allowed(protocol: &Protocol, topic: &vector<u8>): bool {
+    protocol.allowed_topics.contains(*topic)
+}
+
 public fun minimum_bond(protocol: &Protocol, coin_type: TypeName): u64 {
     protocol.minimum_bond_map[&coin_type]
 }
 
-/// Retrieves the fee amount for a specific coin type.
 public fun fee_amount(protocol: &Protocol, coin_type: TypeName): u64 {
     protocol.fee_amounts[&coin_type]
+}
+
+public fun minimum_liveness_ms(protocol: &Protocol): u64 {
+    protocol.minimum_liveness_ms
+}
+
+public fun burn_rate_bps(protocol: &Protocol): u64 {
+    protocol.burn_rate_bps
+}
+
+public fun minimum_submission_delay_ms(protocol: &Protocol): u64 {
+    protocol.minimum_submission_delay_ms
 }
