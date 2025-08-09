@@ -63,9 +63,8 @@ const EUnauthorizedTopic: u64 = 16;
 const EInvalidExpiration: u64 = 17;
 /// Expiration doesn't allow enough time for challenges
 const EExpirationTooEarly: u64 = 18;
-/// 
+///
 const EInvalidWitness: u64 = 19;
-
 
 /// Size limits to prevent spam and storage bloat
 const MAX_TOPIC_LENGTH: u64 = 256;
@@ -190,7 +189,6 @@ public fun create_query<CoinType, Witness: drop>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Query {
-    let liveness_ms = DEFAULT_LIVENESS_MS;
     let coin_type = type_name::get<CoinType>();
 
     assert!(topic.length() > 0, EEmptyTopic);
@@ -206,7 +204,7 @@ public fun create_query<CoinType, Witness: drop>(
 
     let current_time = clock.timestamp_ms();
     assert!(config.expires_at_ms > current_time, EInvalidExpiration);
-    assert!(config.expires_at_ms > current_time + liveness_ms, EExpirationTooEarly);
+    assert!(config.expires_at_ms > current_time + config.liveness_ms, EExpirationTooEarly);
 
     // For historical queries (timestamp provided), the timestamp must be in the past
     if (timestamp_ms.is_some()) {
@@ -243,6 +241,22 @@ public fun create_query<CoinType, Witness: drop>(
     });
 
     query
+}
+
+public fun create_query_config(
+    bond: u64,
+    liveness_ms_maybe: Option<u64>,
+    expires_at_ms: u64,
+    refund_address: Option<address>,
+): QueryConfig {
+    let liveness_ms = liveness_ms_maybe.destroy_with_default(DEFAULT_LIVENESS_MS);
+
+    QueryConfig {
+        bond,
+        liveness_ms,
+        expires_at_ms,
+        refund_address,
+    }
 }
 
 /// Adds rewards to incentivize participation in a query.

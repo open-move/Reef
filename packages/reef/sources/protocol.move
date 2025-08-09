@@ -26,15 +26,7 @@ use sui::vec_set::{Self, VecSet};
 const EInvalidPublisher: u64 = 0;
 /// Trying to use a coin type that isn't whitelisted
 const EBondTypeNotAllowed: u64 = 1;
-
-// ===== Constants ======
-
-/// 50% burn rate on disputes
-const DEFAULT_BURN_RATE_BPS: u64 = 5_000;
-/// 20 hours minimum for challenges
-const DEFAULT_MINIMUM_LIVENESS_MS: u64 = 72_000_00;
-/// 5 minutes before claims can be submitted
-const DEFAULT_MINIMUM_SUBMISSION_DELAY_MS: u64 = 3_000_00;
+const EInvalidBurnRate: u64 = 2;
 
 // ===== Structs =====
 
@@ -89,14 +81,22 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
         allowed_topics: table::new(ctx),
         resolver_proofs: vec_set::empty(),
         minimum_bond_map: vec_map::empty(),
+        burn_rate_bps: default_burn_rate!(),
         allowed_coin_types: vec_set::empty(),
-        burn_rate_bps: DEFAULT_BURN_RATE_BPS,
-        minimum_liveness_ms: DEFAULT_MINIMUM_LIVENESS_MS,
-        minimum_submission_delay_ms: DEFAULT_MINIMUM_SUBMISSION_DELAY_MS,
+        minimum_liveness_ms: default_minimum_liveness_ms!(),
+        minimum_submission_delay_ms: default_minimum_submission_delay_ms!(),
     };
 
     publisher.burn();
     (protocol, ProtocolCap { id: object::new(ctx) })
+}
+
+public fun share_protocol(protocol: Protocol) {
+    transfer::share_object(protocol)
+}
+
+public fun transfer_protocol_cap(cap: ProtocolCap, recipient: address) {
+    transfer::transfer(cap, recipient)
 }
 
 public fun set_minimum_bond(
@@ -138,7 +138,7 @@ public fun set_minimum_liveness(
 }
 
 public fun set_burn_rate(protocol: &mut Protocol, _: &ProtocolCap, burn_rate_bps: u64) {
-    assert!(burn_rate_bps <= 10000, 0); // Max 100%
+    assert!(burn_rate_bps <= 10000, EInvalidBurnRate); // Max 100%
     protocol.burn_rate_bps = burn_rate_bps;
 }
 
@@ -242,3 +242,29 @@ public fun burn_rate_bps(protocol: &Protocol): u64 {
 public fun minimum_submission_delay_ms(protocol: &Protocol): u64 {
     protocol.minimum_submission_delay_ms
 }
+
+// ===== Macros =====
+
+/// 50% burn rate on disputes
+macro public fun default_burn_rate(): u64 {
+    5_000
+}
+
+/// 20 hours minimum for challenges
+macro public fun default_minimum_liveness_ms(): u64 {
+    72_000_00
+}
+
+/// 5 minutes before claims can be submitted
+macro public fun default_minimum_submission_delay_ms(): u64 {
+    3_000_00
+}
+
+// ===== Test Only functions =====
+
+#[test_only]
+public fun initialize_for_testing(ctx: &mut TxContext): (Protocol, ProtocolCap) {
+    let publisher = package::test_claim(PROTOCOL(), ctx);
+    initialize(publisher, ctx)
+}
+
