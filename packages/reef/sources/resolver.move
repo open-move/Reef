@@ -22,13 +22,13 @@ use sui::package::Publisher;
 /// A resolver is an authorized entity that can resolve disputes.
 /// 
 /// Resolvers need to be explicitly enabled by protocol governance and are tied to a specific
-/// "proof type" that acts as their auth witness.
+/// "witness type" that acts as their authorization witness.
 public struct Resolver has key {
     id: UID,
     /// Whether this resolver is currently active
     is_enabled: bool,
     /// The witness type needed to use this resolver
-    proof_type: TypeName,
+    witness_type: TypeName,
 }
 
 /// The final decision about what the correct claim to a query was.
@@ -36,7 +36,7 @@ public struct Resolution has drop {
     query_id: ID,
     claim: vector<u8>,
     resolved_at_ms: u64,
-    proof_type: TypeName,
+    witness_type: TypeName,
 }
 
 /// A hot potato that represents a dispute needing resolution.
@@ -48,38 +48,38 @@ public struct ChallengeRequest<phantom CoinType> {
     challenger: address,
     challenged_at_ms: u64,
     fee: Balance<CoinType>,
-    resolver_type: TypeName
+    resolver_witness: TypeName
 }
 
 public use fun resolution_claim as Resolution.claim;
 public use fun resolution_query_id as Resolution.query_id;
-public use fun resolution_proof_type as Resolution.proof_type;
+public use fun resolution_witness_type as Resolution.witness_type;
 public use fun resolution_resolved_at_ms as Resolution.resolved_at_ms;
 
 public use fun share_resolver as Resolver.share;
 
 
-/// Publisher doesn't match the resolver proof module
+/// Publisher doesn't match the resolver witness module
 const EInvalidPublisher: u64 = 0;
-/// Proof type doesn't match what the resolver expects
-const EInvalidProofType: u64 = 1;
+/// Witness type doesn't match what the resolver expects
+const EInvalidWitnessType: u64 = 1;
 /// Trying to use a resolver that's been disabled
 const EResolverDisabled: u64 = 2;
 
 /// Creates a new resolver that can resolve challenges.
 /// 
-/// The proof parameter acts as a witness for the resolver and the publisher must come from the same module as the proof type.
+/// The witness parameter acts as authorization for the resolver and the publisher must come from the same module as the witness type.
 /// 
 /// New resolvers start disabled and must be explicitly enabled by protocol governance
 /// before they can be used.
-public fun create<Proof: drop>(_proof: Proof, publisher: Publisher, ctx: &mut TxContext): Resolver {
-    assert!(publisher.from_module<Proof>(), EInvalidPublisher);
+public fun create<Witness: drop>(_witness: Witness, publisher: Publisher, ctx: &mut TxContext): Resolver {
+    assert!(publisher.from_module<Witness>(), EInvalidPublisher);
     publisher.burn();
 
     Resolver {
         id: object::new(ctx),
         is_enabled: false,
-        proof_type: type_name::get<Proof>(),
+        witness_type: type_name::get<Witness>(),
     }
 }
 
@@ -87,29 +87,29 @@ public fun share_resolver(resolver: Resolver) {
     transfer::share_object(resolver)
 }
 
-public fun enable(_: &ProtocolCap, resolver: &mut Resolver) {
+public fun enable(resolver: &mut Resolver, _: &ProtocolCap) {
     resolver.is_enabled = true;
 }
 
-public fun disable(_: &ProtocolCap, resolver: &mut Resolver) {
+public fun disable(resolver: &mut Resolver, _: &ProtocolCap) {
     resolver.is_enabled = false;
 }
 
 /// Makes a resolution decision for a disputed query.
-public fun make_resolution<Proof: drop>(
+public fun make_resolution<Witness: drop>(
     resolver: &Resolver,
-    _proof: Proof,
+    _witness: Witness,
     query_id: ID,
     claim: vector<u8>,
     clock: &Clock,
 ): Resolution {
     assert!(resolver.is_enabled, EResolverDisabled);
-    assert!(resolver.proof_type == type_name::get<Proof>(), EInvalidProofType);
+    assert!(resolver.witness_type == type_name::get<Witness>(), EInvalidWitnessType);
 
     Resolution {
         claim,
         query_id,
-        proof_type: resolver.proof_type,
+        witness_type: resolver.witness_type,
         resolved_at_ms: clock.timestamp_ms(),
     }
 }
@@ -118,8 +118,8 @@ public fun is_enabled(resolver: &Resolver): bool {
     resolver.is_enabled
 }
 
-public fun proof_type(resolver: &Resolver): TypeName {
-    resolver.proof_type
+public fun witness_type(resolver: &Resolver): TypeName {
+    resolver.witness_type
 }
 
 /// View functions for Resolution
@@ -135,8 +135,8 @@ public fun resolution_resolved_at_ms(resolution: &Resolution): u64 {
     resolution.resolved_at_ms
 }
 
-public fun resolution_proof_type(resolution: &Resolution): TypeName {
-    resolution.proof_type
+public fun resolution_witness_type(resolution: &Resolution): TypeName {
+    resolution.witness_type
 }
 
 public(package) fun new_challenge_request<CoinType>(
@@ -144,13 +144,13 @@ public(package) fun new_challenge_request<CoinType>(
     fee: Balance<CoinType>,
     challenger: address,
     timestamp_ms: u64,
-    resolver_type: TypeName,
+    resolver_witness: TypeName,
 ): ChallengeRequest<CoinType> {
     ChallengeRequest {
         fee,
         query_id,
         challenger,
-        resolver_type,
+        resolver_witness,
         challenged_at_ms: timestamp_ms,
     }
 }
@@ -162,9 +162,9 @@ public fun unpack_challenge_request<CoinType>(
         fee,
         query_id,
         challenger,
-        resolver_type,
+        resolver_witness,
         challenged_at_ms,
     } = request;
 
-    (query_id, fee, challenger, challenged_at_ms, resolver_type)
+    (query_id, fee, challenger, challenged_at_ms, resolver_witness)
 }

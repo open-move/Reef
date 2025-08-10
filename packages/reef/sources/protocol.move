@@ -44,8 +44,6 @@ public struct Protocol has key {
     minimum_liveness_ms: u64,
     /// Delay after query creation before claims can be submitted
     minimum_submission_delay_ms: u64,
-    /// Which resolver types are authorized to resolve disputes
-    resolver_proofs: VecSet<TypeName>,
     /// Which coin types can be used for bonds/fees
     allowed_coin_types: VecSet<TypeName>,
     /// Which topics are allowed for new queries
@@ -79,7 +77,6 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
         id: object::new(ctx),
         fee_amounts: vec_map::empty(),
         allowed_topics: table::new(ctx),
-        resolver_proofs: vec_set::empty(),
         minimum_bond_map: vec_map::empty(),
         burn_rate_bps: default_burn_rate!(),
         allowed_coin_types: vec_set::empty(),
@@ -171,20 +168,6 @@ public(package) fun collect_burned_bond<CoinType>(protocol: &mut Protocol, bond:
     protocol.collect_fee(bond)
 }
 
-/// Adds a new resolver proof type to the protocol.
-public fun add_resolver_proof(protocol: &mut Protocol, _: &ProtocolCap, resolver_proof: TypeName) {
-    protocol.resolver_proofs.insert(resolver_proof);
-}
-
-/// Removes a resolver proof type from the protocol.
-public fun remove_resolver_proof(
-    protocol: &mut Protocol,
-    _: &ProtocolCap,
-    resolver_proof: TypeName,
-) {
-    protocol.resolver_proofs.remove(&resolver_proof);
-}
-
 /// Adds a new allowed reward type to the protocol.
 public fun add_allowed_coin_type(protocol: &mut Protocol, _: &ProtocolCap, reward_type: TypeName) {
     protocol.allowed_coin_types.insert(reward_type);
@@ -210,10 +193,6 @@ public fun remove_allowed_coin_type(
 }
 
 // === View Functions ===
-
-public fun is_resolver_proof(protocol: &Protocol, resolver_proof: TypeName): bool {
-    protocol.resolver_proofs.contains(&resolver_proof)
-}
 
 public fun is_allowed_coin_type(protocol: &Protocol, reward_type: TypeName): bool {
     protocol.allowed_coin_types.contains(&reward_type)

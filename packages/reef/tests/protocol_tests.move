@@ -3,55 +3,53 @@ module reef::protocol_tests;
 
 use reef::protocol::{Self, Protocol, ProtocolCap};
 use reef::test;
+use reef::test_utils::{admin, USDC};
 use std::type_name;
-
+use std::unit_test::assert_eq;
 use sui::sui::SUI;
 use sui::test_scenario;
-use std::unit_test::assert_eq;
 
 public struct PROTOCOL_TESTS() has drop;
-
-public struct USDC() has drop;
 public struct ETH() has drop;
-
 public struct SimpleResolver() has drop;
 public struct CommitteeResolver() has drop;
 
-const ADMIN: address = @0xAD;
-
 #[test]
-fun test_protocol_initialization() {
-    let mut test = test::begin(ADMIN);
+fun protocol_initialization() {
+    let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let (protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
 
         assert_eq!(protocol.burn_rate_bps(), protocol::default_burn_rate!());
         assert_eq!(protocol.minimum_liveness_ms(), protocol::default_minimum_liveness_ms!());
-        assert_eq!(protocol.minimum_submission_delay_ms(), protocol::default_minimum_submission_delay_ms!());
+        assert_eq!(
+            protocol.minimum_submission_delay_ms(),
+            protocol::default_minimum_submission_delay_ms!(),
+        );
 
         protocol.share_protocol();
-        cap.transfer_protocol_cap(ADMIN);
+        cap.transfer_protocol_cap(admin!());
     };
 
     test.end()
 }
 
 #[test]
-fun test_burn_rate_management() {
-    let mut test = test::begin(ADMIN);
+fun burn_rate_management() {
+    let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let (protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
         protocol.share_protocol();
-        cap.transfer_protocol_cap(ADMIN);
+        cap.transfer_protocol_cap(admin!());
     };
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let mut protocol = scenario.take_shared<Protocol>();
         let cap = scenario.take_from_sender<ProtocolCap>();
@@ -75,20 +73,19 @@ fun test_burn_rate_management() {
     test.end()
 }
 
-#[test]
-#[expected_failure(abort_code = reef::protocol::EInvalidBurnRate)]
-fun test_burn_rate_validation() {
-    let mut test = test::begin(ADMIN);
+#[test, expected_failure(abort_code = reef::protocol::EInvalidBurnRate)]
+fun burn_rate_validation() {
+    let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let (protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
         protocol.share_protocol();
-        cap.transfer_protocol_cap(ADMIN);
+        cap.transfer_protocol_cap(admin!());
     };
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let mut protocol = scenario.take_shared<Protocol>();
         let cap = scenario.take_from_sender<ProtocolCap>();
@@ -103,18 +100,18 @@ fun test_burn_rate_validation() {
 }
 
 #[test]
-fun test_coin_type_whitelist() {
-    let mut test = test::begin(ADMIN);
+fun coin_type_whitelist() {
+    let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let (protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
         protocol.share_protocol();
-        cap.transfer_protocol_cap(ADMIN);
+        cap.transfer_protocol_cap(admin!());
     };
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let mut protocol = scenario.take_shared<Protocol>();
         let cap = scenario.take_from_sender<ProtocolCap>();
@@ -146,18 +143,18 @@ fun test_coin_type_whitelist() {
 }
 
 #[test]
-fun test_topic_whitelist() {
-    let mut test = test::begin(ADMIN);
+fun topic_whitelist() {
+    let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let (protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
         protocol.share_protocol();
-        cap.transfer_protocol_cap(ADMIN);
+        cap.transfer_protocol_cap(admin!());
     };
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let mut protocol = scenario.take_shared<Protocol>();
         let cap = scenario.take_from_sender<ProtocolCap>();
@@ -189,18 +186,18 @@ fun test_topic_whitelist() {
 }
 
 #[test]
-fun test_fee_management() {
-    let mut test = test::begin(ADMIN);
+fun fee_management() {
+    let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let (protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
         protocol.share_protocol();
-        cap.transfer_protocol_cap(ADMIN);
+        cap.transfer_protocol_cap(admin!());
     };
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let mut protocol = scenario.take_shared<Protocol>();
         let cap = scenario.take_from_sender<ProtocolCap>();
@@ -227,18 +224,18 @@ fun test_fee_management() {
 }
 
 #[test]
-fun test_minimum_bond_management() {
-    let mut test = test::begin(ADMIN);
+fun minimum_bond_management() {
+    let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let (protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
         protocol.share_protocol();
-        cap.transfer_protocol_cap(ADMIN);
+        cap.transfer_protocol_cap(admin!());
     };
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let mut protocol = scenario.take_shared<Protocol>();
         let cap = scenario.take_from_sender<ProtocolCap>();
@@ -263,20 +260,19 @@ fun test_minimum_bond_management() {
     test.end()
 }
 
-#[test]
-#[expected_failure(abort_code = protocol::EBondTypeNotAllowed)]
-fun test_minimum_bond_unauthorized_coin() {
-    let mut test = test::begin(ADMIN);
+#[test, expected_failure(abort_code = protocol::EBondTypeNotAllowed)]
+fun minimum_bond_unauthorized_coin() {
+    let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let (protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
         protocol.share_protocol();
-        cap.transfer_protocol_cap(ADMIN);
+        cap.transfer_protocol_cap(admin!());
     };
 
-    scenario.next_tx(ADMIN);
+    scenario.next_tx(admin!());
     {
         let mut protocol = scenario.take_shared<Protocol>();
         let cap = scenario.take_from_sender<ProtocolCap>();

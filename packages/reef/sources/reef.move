@@ -22,6 +22,7 @@ use sui::clock::Clock;
 use sui::coin::Coin;
 use sui::dynamic_field;
 use sui::event;
+use reef::resolver::Resolver;
 
 /// ===== Error Codes =====
 
@@ -90,7 +91,7 @@ public struct Query has key {
     /// Time when this query was created
     created_at_ms: u64,
     /// Which type of resolver can resolve disputes
-    resolver_type: TypeName,
+    resolver_witness: TypeName,
     /// Type that created this query (useful for callbacks)
     creator_witness: TypeName,
     /// What token type is used for bonds/fees
@@ -179,10 +180,10 @@ public struct QueryResolved has copy, drop {
 /// which helps prevent spam and ensures proper integration.
 public fun create_query<CoinType, Witness: drop>(
     protocol: &mut Protocol,
+    resolver: &Resolver,
     _witness: Witness,
     fee: Coin<CoinType>,
     config: QueryConfig,
-    resolver_type: TypeName,
     topic: vector<u8>,
     metadata: vector<u8>,
     timestamp_ms: Option<u64>,
@@ -198,7 +199,6 @@ public fun create_query<CoinType, Witness: drop>(
 
     assert!(protocol.is_topic_allowed(&topic), EUnauthorizedTopic);
     assert!(protocol.is_allowed_coin_type(coin_type), EInvalidCoinType);
-    assert!(protocol.is_resolver_proof(resolver_type), EWrongResolverType);
 
     assert!(fee.value() == protocol.fee_amount(coin_type), EInvalidFeeAmount);
 
@@ -221,7 +221,6 @@ public fun create_query<CoinType, Witness: drop>(
         metadata,
         coin_type,
         timestamp_ms,
-        resolver_type,
         is_settled: false,
         submitter: option::none(),
         challenger: option::none(),
@@ -230,6 +229,7 @@ public fun create_query<CoinType, Witness: drop>(
         submitted_at_ms: option::none(),
         challenged_at_ms: option::none(),
         created_at_ms: clock.timestamp_ms(),
+        resolver_witness: resolver.witness_type(),
         creator_witness: type_name::get<Witness>(),
     };
 
@@ -241,6 +241,10 @@ public fun create_query<CoinType, Witness: drop>(
     });
 
     query
+}
+
+public fun share_query(query: Query) {
+    transfer::share_object(query)
 }
 
 public fun create_query_config(
@@ -293,8 +297,8 @@ public fun set_refund_address<Witness: drop>(
 /// their own bond. If nobody challenges within the liveness period, this claim
 /// becomes the accepted claim.
 public fun submit_claim<CoinType>(
-    protocol: &Protocol,
     query: &mut Query,
+    protocol: &Protocol,
     claim: vector<u8>,
     bond: Coin<CoinType>,
     clock: &Clock,
@@ -372,7 +376,7 @@ public fun challenge_claim<CoinType>(
         balance::zero(),
         ctx.sender(),
         current_time_ms,
-        query.resolver_type,
+        query.resolver_witness,
     )
 }
 
@@ -388,8 +392,8 @@ public fun challenge_claim<CoinType>(
 /// - If submitter was right: submitter gets both bonds (minus burn) + rewards (if any)
 /// - Some bonds get burned to punish the wrong party and fund the protocol
 public fun settle_query<CoinType>(
-    protocol: &mut Protocol,
     query: &mut Query,
+    protocol: &mut Protocol,
     resolution: Option<Resolution>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -497,7 +501,7 @@ fun collect_bond<CoinType>(query: &mut Query, bond: Coin<CoinType>) {
 }
 
 /// Returns the status of query at a given time
-fun status(query: &Query, clock: &Clock): QueryStatus {
+public fun status(query: &Query, clock: &Clock): QueryStatus {
     let current_time = clock.timestamp_ms();
 
     if (current_time >= query.config.expires_at_ms) return QueryStatus::Expired;
@@ -538,7 +542,7 @@ fun apply_resolution(query: &mut Query, resolution: Resolution) {
 
     assert!(resolution.query_id() == query.id.to_inner(), EWrongQueryResolution);
     assert!(resolution.resolved_at_ms() > *query.challenged_at_ms.borrow(), EStaleResolution);
-    assert!(resolution.proof_type() == query.resolver_type, EWrongResolverType);
+    assert!(resolution.witness_type() == query.resolver_witness, EWrongResolverType);
 
     if (submitted_claim == resolution.claim()) {
         query.resolved_claim = query.submitted_claim;
@@ -589,8 +593,8 @@ public fun resolved_claim(query: &Query): Option<vector<u8>> {
     query.resolved_claim
 }
 
-public fun resolver_type(query: &Query): TypeName {
-    query.resolver_type
+public fun resolver_witness(query: &Query): TypeName {
+    query.resolver_witness
 }
 
 public fun bond_amount<CoinType>(query: &Query): u64 {
@@ -627,6 +631,30 @@ public fun is_settled(query: &Query): bool {
     query.is_settled
 }
 
+public fun query_status_created(): QueryStatus {
+    QueryStatus::Created
+}
+
+public fun query_status_submitted(): QueryStatus {
+    QueryStatus::Submitted
+}
+
+public fun query_status_challenged(): QueryStatus {
+    QueryStatus::Challenged
+}
+
+public fun query_status_resolved(): QueryStatus {
+    QueryStatus::Resolved
+}
+
+public fun query_status_settled(): QueryStatus {
+    QueryStatus::Settled
+}
+
+public fun query_status_expired(): QueryStatus {
+    QueryStatus::Expired
+}
+
 public fun submit_claim_with_callback<CoinType>(
     protocol: &Protocol,
     query: &mut Query,
@@ -635,7 +663,7 @@ public fun submit_claim_with_callback<CoinType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): callback::ClaimSubmitted {
-    submit_claim(protocol, query, claim, bond, clock, ctx);
+    query.submit_claim(protocol, claim, bond, clock, ctx);
 
     callback::new_claim_submitted(
         query.id.to_inner(),
@@ -670,7 +698,7 @@ public fun settle_query_with_callback<CoinType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): callback::QuerySettled {
-    settle_query<CoinType>(protocol, query, resolution, clock, ctx);
+    query.settle_query<CoinType>(protocol, resolution, clock, ctx);
 
     callback::new_query_settled(
         query.id.to_inner(),
