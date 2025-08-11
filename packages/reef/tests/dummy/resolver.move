@@ -19,7 +19,7 @@ public fun resolve_challenge<CoinType>(
     resolution_claim: vector<u8>,
     clock: &Clock,
 ): Resolution {
-    let (query_id, fee, _, _, _) = challenge_request.unpack_challenge_request();
+    let (query_id, fee, _, _, _) = challenge_request.unpack_challenge_request(DummyResolver());
 
     // Burn the fee for testing
     fee.into_coin(&mut sui::tx_context::dummy()).burn_for_testing();

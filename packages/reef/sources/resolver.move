@@ -8,7 +8,7 @@
 /// 2. Resolution: The actual decision about what the correct claim was
 /// 3. ChallengeRequest: A hot potato that forces the request to a resolver
 /// 
-/// We're flexible about how challenged claims get resolved, but strict about who
+/// Reef is flexible about how challenged claims get resolved, but strict about who
 /// can resolve them (only authorized resolvers) and when they can do it (only after
 /// a challenge was made).
 module reef::resolver;
@@ -155,8 +155,9 @@ public(package) fun new_challenge_request<CoinType>(
     }
 }
 
-public fun unpack_challenge_request<CoinType>(
+public fun unpack_challenge_request<CoinType, Witness: drop>(
     request: ChallengeRequest<CoinType>,
+    _witness: Witness,
 ): (ID, Balance<CoinType>, address, u64, TypeName) {
     let ChallengeRequest {
         fee,
@@ -166,5 +167,6 @@ public fun unpack_challenge_request<CoinType>(
         challenged_at_ms,
     } = request;
 
+    assert!(resolver_witness == type_name::get<Witness>(), EInvalidWitnessType);
     (query_id, fee, challenger, challenged_at_ms, resolver_witness)
 }
