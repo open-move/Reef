@@ -5,7 +5,7 @@ An optimistic oracle system for Sui that allows smart contracts to request off-c
 ## Key Features
 
 - **Topic Whitelisting**: Only approved topics can be used for queries
-- **Auto-Expiration**: Queries have hard deadlines (`expires_at_ms`) 
+- **Auto-Expiration**: Queries have hard deadlines 
 - **Economic Security**: Bond requirements + burn mechanism punish dishonest behavior
 - **Modular Resolvers**: Pluggable dispute resolution systems
 - **Callback System**: Optional notifications for query lifecycle events
