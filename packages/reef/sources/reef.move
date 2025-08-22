@@ -308,14 +308,9 @@ public fun submit_claim<CoinType>(
     assert!(query.status(clock) == QueryStatus::Created, EInvalidQueryStatus);
     assert!(bond.value() == query.config.bond, EInsufficientBond);
 
-    let current_time_ms = clock.timestamp_ms();
-    assert!(
-        current_time_ms - query.created_at_ms >= protocol.minimum_submission_delay_ms(),
-        ELivenessNotExpired,
-    );
-
     query.collect_bond(bond);
 
+    let current_time_ms = clock.timestamp_ms();
     query.submitted_at_ms.fill(current_time_ms);
     query.submitter.fill(ctx.sender());
     query.submitted_claim.fill(claim);

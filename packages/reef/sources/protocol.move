@@ -42,8 +42,6 @@ public struct Protocol has key {
     burn_rate_bps: u64,
     /// Minimum time challengers have to challenge claims
     minimum_liveness_ms: u64,
-    /// Delay after query creation before claims can be submitted
-    minimum_submission_delay_ms: u64,
     /// Which coin types can be used for bonds/fees
     allowed_coin_types: VecSet<TypeName>,
     /// Which topics are allowed for new queries
@@ -80,8 +78,7 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
         minimum_bond_map: vec_map::empty(),
         burn_rate_bps: default_burn_rate!(),
         allowed_coin_types: vec_set::empty(),
-        minimum_liveness_ms: default_minimum_liveness_ms!(),
-        minimum_submission_delay_ms: default_minimum_submission_delay_ms!(),
+        minimum_liveness_ms: default_minimum_liveness_ms!()
     };
 
     publisher.burn();
@@ -137,14 +134,6 @@ public fun set_minimum_liveness(
 public fun set_burn_rate(protocol: &mut Protocol, _: &ProtocolCap, burn_rate_bps: u64) {
     assert!(burn_rate_bps <= 10000, EInvalidBurnRate); // Max 100%
     protocol.burn_rate_bps = burn_rate_bps;
-}
-
-public fun set_min_submission_delay(
-    protocol: &mut Protocol,
-    _: &ProtocolCap,
-    min_submission_delay_ms: u64,
-) {
-    protocol.minimum_submission_delay_ms = min_submission_delay_ms;
 }
 
 /// Collects protocol fees from query creation.
@@ -216,10 +205,6 @@ public fun minimum_liveness_ms(protocol: &Protocol): u64 {
 
 public fun burn_rate_bps(protocol: &Protocol): u64 {
     protocol.burn_rate_bps
-}
-
-public fun minimum_submission_delay_ms(protocol: &Protocol): u64 {
-    protocol.minimum_submission_delay_ms
 }
 
 // ===== Macros =====
