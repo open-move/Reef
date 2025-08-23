@@ -17,16 +17,13 @@ use sui::coin::Coin;
 use sui::dynamic_field;
 use sui::package::{Self, Publisher};
 use sui::table::{Self, Table};
-use sui::vec_map::{Self, VecMap};
 use sui::vec_set::{Self, VecSet};
 
 // ====== Error Codes =====
 
 /// Publisher doesn't match the protocol module
 const EInvalidPublisher: u64 = 0;
-/// Trying to use a coin type that isn't whitelisted
-const EBondTypeNotAllowed: u64 = 1;
-const EInvalidBurnRate: u64 = 2;
+const EInvalidFeeRate: u64 = 2;
 
 // ===== Structs =====
 
@@ -38,18 +35,15 @@ public struct PROTOCOL() has drop;
 /// This shared object contains all the global settings that govern how the oracle works.
 public struct Protocol has key {
     id: UID,
-    /// How much of losing bonds get burned (in basis points)
-    burn_rate_bps: u64,
+    fee_rate_bps: u64,
     /// Minimum time challengers have to challenge claims
     minimum_liveness_ms: u64,
     /// Which coin types can be used for bonds/fees
     allowed_coin_types: VecSet<TypeName>,
     /// Which topics are allowed for new queries
     allowed_topics: Table<vector<u8>, bool>,
-    /// Protocol fees for creating queries
-    fee_amounts: VecMap<TypeName, u64>,
-    /// Minimum bond amounts for different coin types
-    minimum_bond_map: VecMap<TypeName, u64>,
+    /// Fee amounts for resolution in different coin types
+    resolution_fees: Table<TypeName, u64>,
 }
 
 /// Admin cap for protocol governance.
@@ -73,12 +67,11 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
 
     let protocol = Protocol {
         id: object::new(ctx),
-        fee_amounts: vec_map::empty(),
         allowed_topics: table::new(ctx),
-        minimum_bond_map: vec_map::empty(),
-        burn_rate_bps: default_burn_rate!(),
+        resolution_fees: table::new(ctx),
+        fee_rate_bps: default_fee_rate!(),
         allowed_coin_types: vec_set::empty(),
-        minimum_liveness_ms: default_minimum_liveness_ms!()
+        minimum_liveness_ms: default_minimum_liveness_ms!(),
     };
 
     publisher.burn();
@@ -93,33 +86,16 @@ public fun transfer_protocol_cap(cap: ProtocolCap, recipient: address) {
     transfer::transfer(cap, recipient)
 }
 
-public fun set_minimum_bond(
-    protocol: &mut Protocol,
-    _: &ProtocolCap,
-    coin_type: TypeName,
-    minimum_bond: u64,
-) {
-    assert!(protocol.is_allowed_coin_type(coin_type), EBondTypeNotAllowed);
-
-    if (!protocol.minimum_bond_map.contains(&coin_type)) {
-        protocol.minimum_bond_map.insert(coin_type, minimum_bond);
-    } else {
-        let current_minimum = &mut protocol.minimum_bond_map[&coin_type];
-        *current_minimum = minimum_bond;
-    }
-}
-
-public fun set_fee_amount(
+public fun set_resolution_fee(
     protocol: &mut Protocol,
     _: &ProtocolCap,
     fee_type: TypeName,
     fee_amount: u64,
 ) {
-    if (!protocol.fee_amounts.contains(&fee_type)) {
-        protocol.fee_amounts.insert(fee_type, fee_amount);
+    if (!protocol.resolution_fees.contains(fee_type)) {
+        protocol.resolution_fees.add(fee_type, fee_amount);
     } else {
-        let current_minimum = &mut protocol.fee_amounts[&fee_type];
-        *current_minimum = fee_amount;
+        *(&mut protocol.resolution_fees[fee_type]) = fee_amount;
     }
 }
 
@@ -131,9 +107,9 @@ public fun set_minimum_liveness(
     protocol.minimum_liveness_ms = minimum_liveness_ms;
 }
 
-public fun set_burn_rate(protocol: &mut Protocol, _: &ProtocolCap, burn_rate_bps: u64) {
-    assert!(burn_rate_bps <= 10000, EInvalidBurnRate); // Max 100%
-    protocol.burn_rate_bps = burn_rate_bps;
+public fun set_fee_rate(protocol: &mut Protocol, _: &ProtocolCap, fee_rate_bps: u64) {
+    assert!(fee_rate_bps <= bps!(), EInvalidFeeRate);
+    protocol.fee_rate_bps = fee_rate_bps;
 }
 
 /// Collects protocol fees from query creation.
@@ -192,36 +168,37 @@ public fun is_topic_allowed(protocol: &Protocol, topic: &vector<u8>): bool {
 }
 
 public fun minimum_bond(protocol: &Protocol, coin_type: TypeName): u64 {
-    protocol.minimum_bond_map[&coin_type]
+    let fee_amount = protocol.resolution_fees[coin_type];
+    ((fee_amount as u128) * (bps!() as u128) / (protocol.fee_rate_bps as u128)) as u64
 }
 
-public fun fee_amount(protocol: &Protocol, coin_type: TypeName): u64 {
-    protocol.fee_amounts[&coin_type]
+public fun resolution_fee(protocol: &Protocol, coin_type: TypeName): u64 {
+    protocol.resolution_fees[coin_type]
 }
 
 public fun minimum_liveness_ms(protocol: &Protocol): u64 {
     protocol.minimum_liveness_ms
 }
 
-public fun burn_rate_bps(protocol: &Protocol): u64 {
-    protocol.burn_rate_bps
+public fun fee_rate_bps(protocol: &Protocol): u64 {
+    protocol.fee_rate_bps
 }
 
 // ===== Macros =====
 
+/// Basis points in 100%
+public macro fun bps(): u64 {
+    10_000
+}
+
 /// 50% burn rate on disputes
-macro public fun default_burn_rate(): u64 {
+public macro fun default_fee_rate(): u64 {
     5_000
 }
 
 /// 20 hours minimum for challenges
-macro public fun default_minimum_liveness_ms(): u64 {
+public macro fun default_minimum_liveness_ms(): u64 {
     72_000_00
-}
-
-/// 5 minutes before claims can be submitted
-macro public fun default_minimum_submission_delay_ms(): u64 {
-    3_000_00
 }
 
 // ===== Test Only functions =====
@@ -231,4 +208,3 @@ public fun initialize_for_testing(ctx: &mut TxContext): (Protocol, ProtocolCap) 
     let publisher = package::test_claim(PROTOCOL(), ctx);
     initialize(publisher, ctx)
 }
-

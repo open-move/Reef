@@ -6,7 +6,7 @@
 /// The key concepts:
 /// 1. Resolver: An authorized entity that can make resolution decisions
 /// 2. Resolution: The actual decision about what the correct claim was
-/// 3. ChallengeRequest: A hot potato that forces the request to a resolver
+/// 3. Challenge: A hot potato that forces the request to a resolver
 /// 
 /// Reef is flexible about how challenged claims get resolved, but strict about who
 /// can resolve them (only authorized resolvers) and when they can do it (only after
@@ -43,7 +43,7 @@ public struct Resolution has drop {
 /// 
 /// When someone challenges a claim, this struct gets created and must be consumed
 /// by someone who can resolve the dispute.
-public struct ChallengeRequest<phantom CoinType> {
+public struct Challenge<phantom CoinType> {
     query_id: ID,
     challenger: address,
     challenged_at_ms: u64,
@@ -139,14 +139,14 @@ public fun resolution_witness_type(resolution: &Resolution): TypeName {
     resolution.witness_type
 }
 
-public(package) fun new_challenge_request<CoinType>(
+public(package) fun new_challenge<CoinType>(
     query_id: ID,
     fee: Balance<CoinType>,
     challenger: address,
     timestamp_ms: u64,
     resolver_witness: TypeName,
-): ChallengeRequest<CoinType> {
-    ChallengeRequest {
+): Challenge<CoinType> {
+    Challenge {
         fee,
         query_id,
         challenger,
@@ -155,11 +155,11 @@ public(package) fun new_challenge_request<CoinType>(
     }
 }
 
-public fun unpack_challenge_request<CoinType, Witness: drop>(
-    request: ChallengeRequest<CoinType>,
+public fun unpack_challenge<CoinType, Witness: drop>(
+    request: Challenge<CoinType>,
     _witness: Witness,
 ): (ID, Balance<CoinType>, address, u64, TypeName) {
-    let ChallengeRequest {
+    let Challenge {
         fee,
         query_id,
         challenger,
