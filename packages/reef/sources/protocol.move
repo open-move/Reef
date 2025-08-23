@@ -1,11 +1,11 @@
 /// This module manages the protocol level config for Reef.
 ///
 /// Key responsibilities:
-/// 1. Economic policy (burn rates, minimum bonds, fees)
-/// 3. Content moderation (topic and coin type whitelists)
-/// 4. Resolver management (which types can resolve disputes)
-/// 5. Treasury management (collecting fees and burned bonds)
-/// 2. Security policies (minimum challenge periods, submission delays)
+/// 1. Economic policy (fee rates, resolution fees, minimum bonds)
+/// 2. Content moderation (topic and coin type whitelists)
+/// 3. Resolver management (which types can resolve disputes)
+/// 4. Treasury management (collecting fees)
+/// 5. Security policies (minimum challenge periods)
 ///
 /// The Protocol struct is shared globally so all queries can reference the same
 /// config.
@@ -112,7 +112,7 @@ public fun set_fee_rate(protocol: &mut Protocol, _: &ProtocolCap, fee_rate_bps: 
     protocol.fee_rate_bps = fee_rate_bps;
 }
 
-/// Collects protocol fees from query creation.
+/// Collects protocol fees.
 public(package) fun collect_fee<CoinType>(protocol: &mut Protocol, fee: Coin<CoinType>) {
     let fee_key = FeeKey(type_name::get<CoinType>());
     if (!dynamic_field::exists_(&protocol.id, fee_key)) {
@@ -125,12 +125,6 @@ public(package) fun collect_fee<CoinType>(protocol: &mut Protocol, fee: Coin<Coi
 
         fee_balance.join(fee.into_balance());
     }
-}
-
-/// Collects burned bonds from challenge resolutions.
-public(package) fun collect_burned_bond<CoinType>(protocol: &mut Protocol, bond: Coin<CoinType>) {
-    // Burned bonds go to the treasury too
-    protocol.collect_fee(bond)
 }
 
 /// Adds a new allowed reward type to the protocol.
@@ -191,7 +185,7 @@ public macro fun bps(): u64 {
     10_000
 }
 
-/// 50% burn rate on disputes
+/// 50% fee rate for calculating minimum bonds from resolution fees
 public macro fun default_fee_rate(): u64 {
     5_000
 }

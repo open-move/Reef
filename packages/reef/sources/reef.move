@@ -168,10 +168,10 @@ public struct QueryResolved has copy, drop {
 /// Creates a new query.
 ///
 /// This is the entry point for asking the oracle a question. The caller needs to:
-/// 1. Pay the protocol fee upfront
-/// 2. Set reasonable expiration and liveness periods
-/// 3. Use a whitelisted topic and coin type
-/// 4. Specify which type of resolver can resolve disputes
+/// 1. Set reasonable expiration and liveness periods
+/// 2. Use a whitelisted topic and coin type
+/// 3. Specify which type of resolver can resolve disputes
+/// 4. Provide a bond amount that meets the minimum requirement
 ///
 /// The witness pattern ensures only authorized contracts can create queries,
 /// which helps prevent spam and ensures proper integration.
@@ -390,9 +390,7 @@ public fun challenge_claim<CoinType>(
 /// - If nobody submitted a claim: rewards go to refund address if specified
 ///
 /// For RESOLVED queries (for challenged claims):
-/// - If challenger was right: challenger gets both bonds (minus burn)
-/// - If submitter was right: submitter gets both bonds (minus burn) + rewards (if any)
-/// - Some bonds get burned to punish the wrong party and fund the protocol
+/// - Winner gets remaining bond pool (resolution fee was already deducted during challenge) + rewards
 public fun settle_query<CoinType>(
     query: &mut Query,
     resolution: Option<Resolution>,
