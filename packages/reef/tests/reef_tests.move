@@ -3,13 +3,12 @@ module reef::reef_tests;
 
 use reef::dummy_creator;
 use reef::dummy_resolver;
-use reef::protocol::Protocol;
+use reef::protocol::{Self, Protocol};
 use reef::reef::{Self, Query};
 use reef::resolver::{Self, Resolver};
 use reef::test_utils::{
     admin,
     default_bond,
-    default_fee,
     USDC,
     setup_dummy_resolver,
     setup_protocol as setup_basic_protocol,
@@ -43,20 +42,18 @@ fun create_query<CoinType, CreatorWitness: drop>(
     let resolver = scenario.take_shared<Resolver>();
 
     let ctx = scenario.ctx();
-    let fee = coin::mint_for_testing<CoinType>(default_fee!(), ctx);
     let config = reef::create_query_config(
-        default_bond!(),
         option::some(one_hour_ms!()),
         clock.timestamp_ms() + one_day_ms!(),
         option::none(),
     );
 
     let query = reef::create_query<CoinType, CreatorWitness>(
+        creator_witness,
         protocol,
         &resolver,
-        creator_witness,
-        fee,
         config,
+        default_bond!(),
         b"ETH/USD",
         b"Test query metadata",
         option::none(),
@@ -144,12 +141,12 @@ fun submit_claim() {
         let mut query = scenario.take_shared<Query>();
         let mut clock = scenario.take_shared<Clock>();
 
-        submit_test_claim<USDC>(&mut query, &protocol, b"340934000000", &mut clock, scenario.ctx());
+        submit_test_claim<USDC>(&mut query, b"340934000000", &mut clock, scenario.ctx());
 
         assert_eq!(query.status(&clock), reef::query_status_submitted());
         assert_eq!(query.submitter(), option::some(submitter!()));
         assert_eq!(query.submitted_claim(), option::some(b"340934000000"));
-        assert_eq!(query.bond_amount<USDC>(), default_bond!());
+        assert_eq!(query.total_bond<USDC>(), query.bond_amount());
 
         test_scenario::return_shared(protocol);
         test_scenario::return_shared(clock);
@@ -195,7 +192,7 @@ fun challenge_and_resolve() {
 
         let mut query = scenario.take_shared<Query>();
 
-        submit_test_claim<USDC>(&mut query, &protocol, b"340934000000", &mut clock, scenario.ctx());
+        submit_test_claim<USDC>(&mut query, b"340934000000", &mut clock, scenario.ctx());
 
         test_scenario::return_shared(protocol);
         test_scenario::return_shared(clock);
@@ -208,8 +205,10 @@ fun challenge_and_resolve() {
         let resolver = scenario.take_shared<Resolver>();
         let mut clock = scenario.take_shared<Clock>();
 
+        let protocol = scenario.take_shared<Protocol>();
         let resolution = challenge_challenger_wins<USDC>(
             &mut query,
+            &protocol,
             &resolver,
             b"295025000000",
             &mut clock,
@@ -218,11 +217,15 @@ fun challenge_and_resolve() {
 
         assert_eq!(query.status(&clock), reef::query_status_challenged());
         assert_eq!(query.challenger(), option::some(challenger!()));
-        assert_eq!(query.bond_amount<USDC>(), default_bond!() * 2);
+
+        let fee_amount = (
+            (protocol.fee_factor_bps() as u128) * ((query.bond_amount() as u128)
+        ) / (protocol::bps!() as u128) as u64,
+        );
+        assert_eq!(query.total_bond<USDC>(), (query.bond_amount() * 2) - fee_amount);
 
         // Settle the query
-        let mut protocol = scenario.take_shared<Protocol>();
-        query.settle_query<USDC>(&mut protocol, option::some(resolution), &clock, scenario.ctx());
+        query.settle_query<USDC>(option::some(resolution), &clock, scenario.ctx());
 
         assert_eq!(query.is_settled(), true);
         assert_eq!(query.resolved_claim(), option::some(b"295025000000"));
@@ -273,11 +276,11 @@ fun submit_claim_insufficient_bond() {
     {
         let protocol = scenario.take_shared<Protocol>();
         let mut query = scenario.take_shared<Query>();
-        let mut clock = scenario.take_shared<Clock>();
+        let clock = scenario.take_shared<Clock>();
 
-        clock.increment_for_testing(protocol.minimum_submission_delay_ms() + 1000);
-        let bond = coin::mint_for_testing<USDC>(default_bond!() / 2, scenario.ctx());
-        query.submit_claim<USDC>(&protocol, b"3000.50", bond, &clock, scenario.ctx());
+        // No more minimum submission delay
+        let bond = coin::mint_for_testing<USDC>(query.bond_amount() / 2, scenario.ctx());
+        query.submit_claim<USDC>(b"3000.50", bond, &clock, scenario.ctx());
 
         test_scenario::return_shared(protocol);
         test_scenario::return_shared(clock);
@@ -324,7 +327,7 @@ fun challenge_own_claim() {
         let mut query = scenario.take_shared<Query>();
         let mut clock = scenario.take_shared<Clock>();
 
-        submit_test_claim<USDC>(&mut query, &protocol, b"3000.50", &mut clock, scenario.ctx());
+        submit_test_claim<USDC>(&mut query, b"3000.50", &mut clock, scenario.ctx());
 
         test_scenario::return_shared(protocol);
         test_scenario::return_shared(clock);
@@ -337,19 +340,22 @@ fun challenge_own_claim() {
         let mut query = scenario.take_shared<Query>();
         let clock = scenario.take_shared<Clock>();
 
-        let challenge_bond = coin::mint_for_testing<USDC>(default_bond!(), scenario.ctx());
-        let challenge_request = reef::challenge_claim<USDC>(
+        let challenge_bond = coin::mint_for_testing<USDC>(query.bond_amount(), scenario.ctx());
+        let protocol = scenario.take_shared<Protocol>();
+        let challenge = reef::challenge_claim<USDC>(
             &mut query,
+            &protocol,
             challenge_bond,
             &clock,
             scenario.ctx(),
         );
+        test_scenario::return_shared(protocol);
 
         // Clean up challenge request by resolving it
         let resolver = scenario.take_shared<Resolver>();
         let _resolution = dummy_resolver::resolve_challenger_wins(
             &resolver,
-            challenge_request,
+            challenge,
             b"different_claim",
             &clock,
         );
@@ -401,7 +407,6 @@ fun test_submit_claim_with_callback() {
         let mut clock = scenario.take_shared<Clock>();
 
         submit_claim_with_callback_and_verify<USDC, _>(
-            &protocol,
             &mut query,
             b"3405.25",
             dummy_creator::make_witness(),
@@ -457,7 +462,7 @@ fun test_challenge_claim_with_callback() {
         let mut query = scenario.take_shared<Query>();
         let mut clock = scenario.take_shared<Clock>();
 
-        submit_test_claim<USDC>(&mut query, &protocol, b"3405.25", &mut clock, scenario.ctx());
+        submit_test_claim<USDC>(&mut query, b"3405.25", &mut clock, scenario.ctx());
 
         test_scenario::return_shared(protocol);
         test_scenario::return_shared(clock);
@@ -469,12 +474,15 @@ fun test_challenge_claim_with_callback() {
     {
         let mut query = scenario.take_shared<Query>();
         let clock = scenario.take_shared<Clock>();
-        let challenge_request = challenge_claim_with_callback_and_verify<USDC, _>(
+        let protocol = scenario.take_shared<Protocol>();
+        let challenge = challenge_claim_with_callback_and_verify<USDC, _>(
             &mut query,
+            &protocol,
             dummy_creator::make_witness(),
             &clock,
             scenario.ctx(),
         );
+        test_scenario::return_shared(protocol);
 
         // Unpack and dispose of the challenge request
         let resolver = scenario.take_shared<Resolver>();
@@ -484,7 +492,7 @@ fun test_challenge_claim_with_callback() {
             _challenger,
             _timestamp,
             _witness_type,
-        ) = resolver::unpack_challenge_request(challenge_request);
+        ) = resolver::unpack_challenge(challenge, dummy_resolver::make_witness());
         balance::destroy_for_testing(balance);
         test_scenario::return_shared(resolver);
 
@@ -622,7 +630,7 @@ fun test_query_getters() {
         assert_eq!(query.metadata(), b"Test query metadata");
         assert_eq!(query.coin_type(), type_name::get<USDC>());
         assert_eq!(query.created_at_ms(), creation_time);
-        assert_eq!(query.bond_amount<USDC>(), 0); // No bond submitted yet
+        assert_eq!(query.total_bond<USDC>(), 0); // No bond submitted yet
 
         // Initially unsubmitted
         assert_eq!(query.submitter(), option::none());
@@ -679,7 +687,7 @@ fun test_query_lifecycle_getters() {
         let mut clock = scenario.take_shared<Clock>();
         let mut query = scenario.take_shared<Query>();
 
-        submit_test_claim<USDC>(&mut query, &protocol, b"3405.25", &mut clock, scenario.ctx());
+        submit_test_claim<USDC>(&mut query, b"3405.25", &mut clock, scenario.ctx());
         let submit_time = clock.timestamp_ms();
 
         // Test submitted state getters
@@ -697,6 +705,7 @@ fun test_query_lifecycle_getters() {
     // Challenge and test getters
     scenario.next_tx(challenger!());
     {
+        let protocol = scenario.take_shared<Protocol>();
         let mut query = scenario.take_shared<Query>();
         let resolver = scenario.take_shared<Resolver>();
         let mut clock = scenario.take_shared<Clock>();
@@ -704,6 +713,7 @@ fun test_query_lifecycle_getters() {
         let challenge_time_before = clock.timestamp_ms();
         let resolution = challenge_challenger_wins<USDC>(
             &mut query,
+            &protocol,
             &resolver,
             b"3200.00",
             &mut clock,
@@ -716,8 +726,7 @@ fun test_query_lifecycle_getters() {
         assert_eq!(query.challenged_at_ms(), option::some(challenge_time_before));
 
         // Settle and test final getters
-        let mut protocol = scenario.take_shared<Protocol>();
-        query.settle_query<USDC>(&mut protocol, option::some(resolution), &clock, scenario.ctx());
+        query.settle_query<USDC>(option::some(resolution), &clock, scenario.ctx());
 
         assert_eq!(query.is_settled(), true);
         assert_eq!(query.resolved_claim(), option::some(b"3200.00"));

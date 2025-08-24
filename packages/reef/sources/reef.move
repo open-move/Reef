@@ -551,7 +551,11 @@ public fun resolver_witness(query: &Query): TypeName {
     query.resolver_witness
 }
 
-public fun bond_amount<CoinType>(query: &Query): u64 {
+public fun bond_amount(query: &Query): u64 {
+    query.bond_amount
+}
+
+public fun total_bond<CoinType>(query: &Query): u64 {
     assert!(query.coin_type == type_name::get<CoinType>(), EInvalidCoinType);
     if (dynamic_field::exists_(&query.id, BondKey())) {
         let bond_balance = dynamic_field::borrow<BondKey, Balance<CoinType>>(&query.id, BondKey());

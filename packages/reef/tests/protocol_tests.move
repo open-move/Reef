@@ -9,11 +9,6 @@ use std::unit_test::assert_eq;
 use sui::sui::SUI;
 use sui::test_scenario;
 
-public struct PROTOCOL_TESTS() has drop;
-public struct ETH() has drop;
-public struct SimpleResolver() has drop;
-public struct CommitteeResolver() has drop;
-
 #[test]
 fun protocol_initialization() {
     let mut test = test::begin(admin!());
@@ -23,12 +18,8 @@ fun protocol_initialization() {
     {
         let (protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
 
-        assert_eq!(protocol.burn_rate_bps(), protocol::default_burn_rate!());
+        assert_eq!(protocol.fee_factor_bps(), protocol::default_fee_factor!());
         assert_eq!(protocol.minimum_liveness_ms(), protocol::default_minimum_liveness_ms!());
-        assert_eq!(
-            protocol.minimum_submission_delay_ms(),
-            protocol::default_minimum_submission_delay_ms!(),
-        );
 
         protocol.share_protocol();
         cap.transfer_protocol_cap(admin!());
@@ -38,7 +29,7 @@ fun protocol_initialization() {
 }
 
 #[test]
-fun burn_rate_management() {
+fun fee_factor_management() {
     let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
@@ -54,17 +45,17 @@ fun burn_rate_management() {
         let mut protocol = scenario.take_shared<Protocol>();
         let cap = scenario.take_from_sender<ProtocolCap>();
 
-        // Test setting valid burn rate
-        protocol.set_burn_rate(&cap, 2500); // 25%
-        assert_eq!(protocol.burn_rate_bps(), 2500);
+        // Test setting valid fee factor
+        protocol.set_fee_factor(&cap, 2500); // 25%
+        assert_eq!(protocol.fee_factor_bps(), 2500);
 
-        // Test setting maximum burn rate
-        protocol.set_burn_rate(&cap, 10000); // 100%
-        assert_eq!(protocol.burn_rate_bps(), 10000);
+        // Test setting maximum fee factor
+        protocol.set_fee_factor(&cap, 10000); // 100%
+        assert_eq!(protocol.fee_factor_bps(), 10000);
 
-        // Test setting zero burn rate
-        protocol.set_burn_rate(&cap, 0);
-        assert_eq!(protocol.burn_rate_bps(), 0);
+        // Test setting zero fee factor
+        protocol.set_fee_factor(&cap, 0);
+        assert_eq!(protocol.fee_factor_bps(), 0);
 
         test_scenario::return_shared(protocol);
         scenario.return_to_sender(cap);
@@ -73,8 +64,8 @@ fun burn_rate_management() {
     test.end()
 }
 
-#[test, expected_failure(abort_code = reef::protocol::EInvalidBurnRate)]
-fun burn_rate_validation() {
+#[test, expected_failure(abort_code = reef::protocol::EInvalidFeeFactor)]
+fun fee_factor_validation() {
     let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
@@ -90,7 +81,7 @@ fun burn_rate_validation() {
         let mut protocol = scenario.take_shared<Protocol>();
         let cap = scenario.take_from_sender<ProtocolCap>();
 
-        protocol.set_burn_rate(&cap, 10001); // > 100%, should fail
+        protocol.set_fee_factor(&cap, 10001); // > 100%, should fail
 
         test_scenario::return_shared(protocol);
         scenario.return_to_sender(cap);
@@ -186,7 +177,7 @@ fun topic_whitelist() {
 }
 
 #[test]
-fun fee_management() {
+fun resolution_fee_management() {
     let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
@@ -205,16 +196,16 @@ fun fee_management() {
         let usdc_type = type_name::get<USDC>();
         let sui_type = type_name::get<SUI>();
 
-        // Set fee amounts
-        protocol.set_fee_amount(&cap, usdc_type, 1000000); // 1 USDC
-        protocol.set_fee_amount(&cap, sui_type, 100000000); // 0.1 SUI
+        // Set resolution fee amounts
+        protocol.set_resolution_fee(&cap, usdc_type, 1000000); // 1 USDC
+        protocol.set_resolution_fee(&cap, sui_type, 100000000); // 0.1 SUI
 
-        assert_eq!(protocol.fee_amount(usdc_type), 1000000);
-        assert_eq!(protocol.fee_amount(sui_type), 100000000);
+        assert_eq!(protocol.resolution_fee(usdc_type), 1000000);
+        assert_eq!(protocol.resolution_fee(sui_type), 100000000);
 
         // Update existing fee
-        protocol.set_fee_amount(&cap, usdc_type, 2000000); // 2 USDC
-        assert_eq!(protocol.fee_amount(usdc_type), 2000000);
+        protocol.set_resolution_fee(&cap, usdc_type, 2000000); // 2 USDC
+        assert_eq!(protocol.resolution_fee(usdc_type), 2000000);
 
         test_scenario::return_shared(protocol);
         scenario.return_to_sender(cap);
@@ -224,7 +215,7 @@ fun fee_management() {
 }
 
 #[test]
-fun minimum_bond_management() {
+fun minimum_bond_calculation() {
     let mut test = test::begin(admin!());
     let scenario = test.scenario();
 
@@ -245,42 +236,17 @@ fun minimum_bond_management() {
         // First add the coin type to whitelist
         protocol.add_allowed_coin_type(&cap, usdc_type);
 
-        // Set minimum bond
-        protocol.set_minimum_bond(&cap, usdc_type, 10000000); // 10 USDC
-        assert_eq!(protocol.minimum_bond(usdc_type), 10000000);
+        // Set resolution fee - minimum bond will be calculated from this
+        protocol.set_resolution_fee(&cap, usdc_type, 1000000); // 1 USDC resolution fee
+        
+        // With default fee factor of 50% (5000 bps), minimum bond should be 2 USDC
+        // minimum_bond = (resolution_fee * 10000) / fee_factor_bps = (1000000 * 10000) / 5000 = 2000000
+        assert_eq!(protocol.minimum_bond(usdc_type), 2000000);
 
-        // Update minimum bond
-        protocol.set_minimum_bond(&cap, usdc_type, 5000000); // 5 USDC
-        assert_eq!(protocol.minimum_bond(usdc_type), 5000000);
-
-        test_scenario::return_shared(protocol);
-        scenario.return_to_sender(cap);
-    };
-
-    test.end()
-}
-
-#[test, expected_failure(abort_code = protocol::EBondTypeNotAllowed)]
-fun minimum_bond_unauthorized_coin() {
-    let mut test = test::begin(admin!());
-    let scenario = test.scenario();
-
-    scenario.next_tx(admin!());
-    {
-        let (protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
-        protocol.share_protocol();
-        cap.transfer_protocol_cap(admin!());
-    };
-
-    scenario.next_tx(admin!());
-    {
-        let mut protocol = scenario.take_shared<Protocol>();
-        let cap = scenario.take_from_sender<ProtocolCap>();
-
-        let usdc_type = type_name::get<USDC>();
-
-        // Try to set minimum bond without whitelisting coin type first
-        protocol.set_minimum_bond(&cap, usdc_type, 10000000);
+        // Update resolution fee
+        protocol.set_resolution_fee(&cap, usdc_type, 500000); // 0.5 USDC resolution fee
+        // New minimum bond should be 1 USDC
+        assert_eq!(protocol.minimum_bond(usdc_type), 1000000);
 
         test_scenario::return_shared(protocol);
         scenario.return_to_sender(cap);
@@ -288,3 +254,4 @@ fun minimum_bond_unauthorized_coin() {
 
     test.end()
 }
+

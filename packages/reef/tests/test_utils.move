@@ -13,7 +13,6 @@ use sui::coin;
 use sui::test_scenario::{Self, Scenario};
 
 public struct USDC() has drop;
-public struct INVALID_COIN() has drop;
 
 public fun setup_protocol(scenario: &mut Scenario, topics: vector<vector<u8>>) {
     let (mut protocol, cap) = protocol::initialize_for_testing(scenario.ctx());
@@ -21,8 +20,7 @@ public fun setup_protocol(scenario: &mut Scenario, topics: vector<vector<u8>>) {
     let usdc_type = type_name::get<USDC>();
     protocol.add_allowed_coin_type(&cap, usdc_type);
 
-    protocol.set_fee_amount(&cap, usdc_type, default_fee!());
-    protocol.set_minimum_bond(&cap, usdc_type, default_bond!());
+    protocol.set_resolution_fee(&cap, usdc_type, default_fee!());
     topics.do!(|topic| { protocol.add_allowed_topic(&cap, topic); });
 
     protocol.share_protocol();
@@ -46,27 +44,22 @@ public fun setup_clock(scenario: &mut Scenario) {
 
 public fun submit_test_claim<CoinType>(
     query: &mut Query,
-    protocol: &Protocol,
     claim: vector<u8>,
     clock: &mut Clock,
     ctx: &mut TxContext,
 ) {
-    clock.increment_for_testing(protocol.minimum_submission_delay_ms() + 1000);
-    let bond = coin::mint_for_testing<CoinType>(default_bond!(), ctx);
-    query.submit_claim<CoinType>(protocol, claim, bond, clock, ctx);
+    let bond = coin::mint_for_testing<CoinType>(query.bond_amount(), ctx);
+    query.submit_claim<CoinType>(claim, bond, clock, ctx);
 }
 
 public fun submit_claim_with_callback<CoinType>(
     query: &mut Query,
-    protocol: &Protocol,
     claim: vector<u8>,
     clock: &mut Clock,
     ctx: &mut TxContext,
 ) {
-    clock.increment_for_testing(protocol.minimum_submission_delay_ms() + 1000);
-    let bond = coin::mint_for_testing<CoinType>(default_bond!(), ctx);
+    let bond = coin::mint_for_testing<CoinType>(query.bond_amount(), ctx);
     let callback = reef::submit_claim_with_callback<CoinType>(
-        protocol,
         query,
         claim,
         bond,
@@ -79,51 +72,51 @@ public fun submit_claim_with_callback<CoinType>(
 
 public fun create_challenge<CoinType>(
     query: &mut Query,
+    protocol: &Protocol,
     clock: &Clock,
     ctx: &mut TxContext,
-): resolver::ChallengeRequest<CoinType> {
-    let challenge_bond = coin::mint_for_testing<CoinType>(default_bond!(), ctx);
-    reef::challenge_claim<CoinType>(query, challenge_bond, clock, ctx)
+): resolver::Challenge<CoinType> {
+    let challenge_bond = coin::mint_for_testing<CoinType>(query.bond_amount(), ctx);
+    reef::challenge_claim<CoinType>(query, protocol, challenge_bond, clock, ctx)
 }
 
 public fun challenge_challenger_wins<CoinType>(
     query: &mut Query,
+    protocol: &Protocol,
     resolver: &Resolver,
     new_claim: vector<u8>,
     clock: &mut Clock,
     ctx: &mut TxContext,
 ): resolver::Resolution {
-    let challenge_bond = coin::mint_for_testing<CoinType>(default_bond!(), ctx);
-    let challenge_request = reef::challenge_claim<CoinType>(query, challenge_bond, clock, ctx);
+    let challenge_bond = coin::mint_for_testing<CoinType>(query.bond_amount(), ctx);
+    let challenge_request = reef::challenge_claim<CoinType>(query, protocol, challenge_bond, clock, ctx);
     clock.increment_for_testing(1000);
     dummy_resolver::resolve_challenger_wins(resolver, challenge_request, new_claim, clock)
 }
 
 public fun challenge_submitter_wins<CoinType>(
     query: &mut Query,
+    protocol: &Protocol,
     resolver: &Resolver,
     original_claim: vector<u8>,
     clock: &mut Clock,
     ctx: &mut TxContext,
 ): resolver::Resolution {
-    let challenge_bond = coin::mint_for_testing<CoinType>(default_bond!(), ctx);
-    let challenge_request = reef::challenge_claim<CoinType>(query, challenge_bond, clock, ctx);
+    let challenge_bond = coin::mint_for_testing<CoinType>(query.bond_amount(), ctx);
+    let challenge_request = reef::challenge_claim<CoinType>(query, protocol, challenge_bond, clock, ctx);
     clock.increment_for_testing(1000);
     dummy_resolver::resolve_submitter_wins(resolver, challenge_request, original_claim, clock)
 }
 
 public fun submit_claim_with_callback_and_verify<CoinType, Oracle: drop>(
-    protocol: &Protocol,
     query: &mut Query,
     claim: vector<u8>,
     oracle: Oracle,
     clock: &mut Clock,
     ctx: &mut TxContext,
 ) {
-    clock.increment_for_testing(protocol.minimum_submission_delay_ms() + 1000);
-    let bond = coin::mint_for_testing<CoinType>(default_bond!(), ctx);
+    let bond = coin::mint_for_testing<CoinType>(query.bond_amount(), ctx);
     let callback = reef::submit_claim_with_callback<CoinType>(
-        protocol,
         query,
         claim,
         bond,
@@ -136,13 +129,15 @@ public fun submit_claim_with_callback_and_verify<CoinType, Oracle: drop>(
 
 public fun challenge_claim_with_callback_and_verify<CoinType, Oracle: drop>(
     query: &mut Query,
+    protocol: &Protocol,
     oracle: Oracle,
     clock: &Clock,
     ctx: &mut TxContext,
-): resolver::ChallengeRequest<CoinType> {
-    let challenge_bond = coin::mint_for_testing<CoinType>(default_bond!(), ctx);
+): resolver::Challenge<CoinType> {
+    let challenge_bond = coin::mint_for_testing<CoinType>(query.bond_amount(), ctx);
     let (challenge_request, callback) = reef::challenge_claim_with_callback<CoinType>(
         query,
+        protocol,
         challenge_bond,
         clock,
         ctx,
@@ -153,7 +148,6 @@ public fun challenge_claim_with_callback_and_verify<CoinType, Oracle: drop>(
 }
 
 public fun settle_query_with_callback_and_verify<CoinType, Oracle: drop>(
-    protocol: &mut Protocol,
     query: &mut Query,
     resolution: resolver::Resolution,
     oracle: Oracle,
@@ -161,7 +155,6 @@ public fun settle_query_with_callback_and_verify<CoinType, Oracle: drop>(
     ctx: &mut TxContext,
 ) {
     let callback = reef::settle_query_with_callback<CoinType>(
-        protocol,
         query,
         option::some(resolution),
         clock,

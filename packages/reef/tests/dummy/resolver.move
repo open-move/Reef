@@ -51,6 +51,10 @@ public fun get_witness(): std::type_name::TypeName {
     type_name::get<DummyResolver>()
 }
 
+public fun make_witness(): DummyResolver {
+    DummyResolver()
+}
+
 public fun resolve_submitter_wins<CoinType>(
     resolver: &Resolver,
     challenge: Challenge<CoinType>,
