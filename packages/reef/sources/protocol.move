@@ -1,7 +1,7 @@
 /// This module manages the protocol level config for Reef.
 ///
 /// Key responsibilities:
-/// 1. Economic policy (fee rates, resolution fees, minimum bonds)
+/// 1. Economic policy (fee factor, resolution fees, minimum bonds)
 /// 2. Content moderation (topic and coin type whitelists)
 /// 3. Resolver management (which types can resolve disputes)
 /// 4. Treasury management (collecting fees)
@@ -23,7 +23,7 @@ use sui::vec_set::{Self, VecSet};
 
 /// Publisher doesn't match the protocol module
 const EInvalidPublisher: u64 = 0;
-const EInvalidFeeRate: u64 = 2;
+const EInvalidFeeFactor: u64 = 2;
 
 // ===== Structs =====
 
@@ -35,7 +35,7 @@ public struct PROTOCOL() has drop;
 /// This shared object contains all the global settings that govern how the oracle works.
 public struct Protocol has key {
     id: UID,
-    fee_rate_bps: u64,
+    fee_factor_bps: u64,
     /// Minimum time challengers have to challenge claims
     minimum_liveness_ms: u64,
     /// Which coin types can be used for bonds/fees
@@ -69,7 +69,7 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
         id: object::new(ctx),
         allowed_topics: table::new(ctx),
         resolution_fees: table::new(ctx),
-        fee_rate_bps: default_fee_rate!(),
+        fee_factor_bps: default_fee_factor!(),
         allowed_coin_types: vec_set::empty(),
         minimum_liveness_ms: default_minimum_liveness_ms!(),
     };
@@ -107,9 +107,9 @@ public fun set_minimum_liveness(
     protocol.minimum_liveness_ms = minimum_liveness_ms;
 }
 
-public fun set_fee_rate(protocol: &mut Protocol, _: &ProtocolCap, fee_rate_bps: u64) {
-    assert!(fee_rate_bps <= bps!(), EInvalidFeeRate);
-    protocol.fee_rate_bps = fee_rate_bps;
+public fun set_fee_factor(protocol: &mut Protocol, _: &ProtocolCap, fee_factor_bps: u64) {
+    assert!(fee_factor_bps <= bps!(), EInvalidFeeFactor);
+    protocol.fee_factor_bps = fee_factor_bps;
 }
 
 /// Collects protocol fees.
@@ -163,7 +163,7 @@ public fun is_topic_allowed(protocol: &Protocol, topic: &vector<u8>): bool {
 
 public fun minimum_bond(protocol: &Protocol, coin_type: TypeName): u64 {
     let fee_amount = protocol.resolution_fees[coin_type];
-    ((fee_amount as u128) * (bps!() as u128) / (protocol.fee_rate_bps as u128)) as u64
+    ((fee_amount as u128) * (bps!() as u128) / (protocol.fee_factor_bps as u128)) as u64
 }
 
 public fun resolution_fee(protocol: &Protocol, coin_type: TypeName): u64 {
@@ -174,8 +174,8 @@ public fun minimum_liveness_ms(protocol: &Protocol): u64 {
     protocol.minimum_liveness_ms
 }
 
-public fun fee_rate_bps(protocol: &Protocol): u64 {
-    protocol.fee_rate_bps
+public fun fee_factor_bps(protocol: &Protocol): u64 {
+    protocol.fee_factor_bps
 }
 
 // ===== Macros =====
@@ -185,8 +185,8 @@ public macro fun bps(): u64 {
     10_000
 }
 
-/// 50% fee rate for calculating minimum bonds from resolution fees
-public macro fun default_fee_rate(): u64 {
+/// 50% fee factor for calculating minimum bonds from resolution fees
+public macro fun default_fee_factor(): u64 {
     5_000
 }
 

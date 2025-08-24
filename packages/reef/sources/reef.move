@@ -359,7 +359,7 @@ public fun challenge_claim<CoinType>(
     let query_id = query.id.to_inner();
     let fee_amount = (
         (
-            (protocol.fee_rate_bps() as u128) * (query.bond_amount as u128)
+            (protocol.fee_factor_bps() as u128) * (query.bond_amount as u128)
         ) / (protocol::bps!() as u128) as u64,
     );
     let bond_balance = dynamic_field::borrow_mut<BondKey, Balance<CoinType>>(
