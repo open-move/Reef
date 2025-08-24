@@ -355,7 +355,6 @@ public fun challenge_claim<CoinType>(
         )
     });
 
-
     let query_id = query.id.to_inner();
     let fee_amount = (
         (
