@@ -457,16 +457,13 @@ fun collect_bond<CoinType>(query: &mut Query, bond: Coin<CoinType>) {
 public fun status(query: &Query, clock: &Clock): QueryStatus {
     let current_time = clock.timestamp_ms();
 
-    if (current_time >= query.config.expires_at_ms) return QueryStatus::Expired;
     if (query.submitter.is_none()) return QueryStatus::Created;
     if (query.is_settled) return QueryStatus::Settled;
 
     if (query.challenger.is_none()) {
-        if (query.submitted_at_ms.is_some()) {
-            let submitted_time = *query.submitted_at_ms.borrow();
-            if (current_time - submitted_time >= query.config.liveness_ms) {
-                return QueryStatus::Expired
-            }
+        let submitted_time = *query.submitted_at_ms.borrow();
+        if (current_time - submitted_time >= query.config.liveness_ms) {
+            return QueryStatus::Expired
         };
 
         return QueryStatus::Submitted
