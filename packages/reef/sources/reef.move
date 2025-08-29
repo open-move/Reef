@@ -14,6 +14,7 @@
 module reef::reef;
 
 use reef::callback;
+use reef::epoch::{Self, EpochManager};
 use reef::protocol::{Self, Protocol};
 use reef::resolver::{Self, Resolution, Challenge, Resolver};
 use std::type_name::{Self, TypeName};
@@ -87,6 +88,8 @@ public struct Query has key {
     config: QueryConfig,
     /// Time when this query was created
     created_at_ms: u64,
+    /// The epoch this query was created in
+    epoch_id: u64,
     /// Which type of resolver can resolve disputes
     resolver_witness: TypeName,
     /// Type that created this query (useful for callbacks)
@@ -175,6 +178,8 @@ public struct QueryResolved has copy, drop {
 ///
 /// The witness pattern ensures only authorized contracts can create queries,
 /// which helps prevent spam and ensures proper integration.
+///
+/// Queries are always assigned to the next epoch to ensure full epoch time for resolution.
 public fun create_query<CoinType, Witness: drop>(
     _witness: Witness,
     protocol: &mut Protocol,
@@ -208,11 +213,16 @@ public fun create_query<CoinType, Witness: drop>(
         assert!(*timestamp_ms_maybe.borrow() <= current_time, EInvalidLiveness);
     };
 
+    // Assign query to current epoch and record metrics
+    let epoch_manager = protocol.epoch_manager_mut();
+    let epoch_id = epoch_manager.current_epoch_id(clock);
+
     let query = Query {
         id: object::new(ctx),
         topic,
         config,
         metadata,
+        epoch_id,
         coin_type,
         bond_amount,
         is_settled: false,
@@ -227,6 +237,8 @@ public fun create_query<CoinType, Witness: drop>(
         resolver_witness: resolver.witness_type(),
         creator_witness: type_name::get<Witness>(),
     };
+
+    epoch_manager.record_query_created(epoch_id, bond_amount, query.coin_type, clock, ctx);
 
     event::emit(QueryCreated {
         topic: query.topic,
@@ -325,7 +337,7 @@ public fun submit_claim<CoinType>(
 /// 4. Need to post the same bond amount as the original submitter
 public fun challenge_claim<CoinType>(
     query: &mut Query,
-    protocol: &Protocol,
+    protocol: &mut Protocol,
     bond: Coin<CoinType>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -361,6 +373,10 @@ public fun challenge_claim<CoinType>(
             (protocol.fee_factor_bps() as u128) * (query.bond_amount as u128)
         ) / (protocol::bps!() as u128) as u64,
     );
+
+    // Record challenge in the epoch
+    let epoch_manager = protocol.epoch_manager_mut();
+
     let bond_balance = dynamic_field::borrow_mut<BondKey, Balance<CoinType>>(
         &mut query.id,
         BondKey(),
@@ -515,6 +531,10 @@ public fun created_at_ms(query: &Query): u64 {
     query.created_at_ms
 }
 
+public fun epoch_id(query: &Query): u64 {
+    query.epoch_id
+}
+
 public fun coin_type(query: &Query): TypeName {
     query.coin_type
 }
@@ -628,7 +648,7 @@ public fun submit_claim_with_callback<CoinType>(
 
 public fun challenge_claim_with_callback<CoinType>(
     query: &mut Query,
-    protocol: &Protocol,
+    protocol: &mut Protocol,
     bond: Coin<CoinType>,
     clock: &Clock,
     ctx: &mut TxContext,

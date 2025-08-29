@@ -11,8 +11,10 @@
 /// config.
 module reef::protocol;
 
+use reef::epoch::{Self, EpochManager};
 use std::type_name::{Self, TypeName};
 use sui::balance::Balance;
+use sui::clock::Clock;
 use sui::coin::Coin;
 use sui::dynamic_field;
 use sui::package::{Self, Publisher};
@@ -44,6 +46,8 @@ public struct Protocol has key {
     allowed_topics: Table<vector<u8>, bool>,
     /// Fee amounts for resolution in different coin types
     resolution_fees: Table<TypeName, u64>,
+    /// Global epoch management system
+    epoch_manager: EpochManager,
 }
 
 /// Admin cap for protocol governance.
@@ -62,7 +66,11 @@ fun init(otw: PROTOCOL, ctx: &mut TxContext) {
 ///
 /// This creates the Protocol object with the defaults and protocol cap.
 /// The publisher ensures this can only be called by initialized once as it is deleted during the initialization process.
-public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, ProtocolCap) {
+public fun initialize(
+    publisher: Publisher,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Protocol, ProtocolCap) {
     assert!(publisher.from_module<PROTOCOL>(), EInvalidPublisher);
 
     let protocol = Protocol {
@@ -72,6 +80,7 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
         fee_factor_bps: default_fee_factor!(),
         allowed_coin_types: vec_set::empty(),
         minimum_liveness_ms: default_minimum_liveness_ms!(),
+        epoch_manager: epoch::new_epoch_manager(option::none(), clock, ctx),
     };
 
     publisher.burn();
@@ -178,6 +187,11 @@ public fun fee_factor_bps(protocol: &Protocol): u64 {
     protocol.fee_factor_bps
 }
 
+public fun epoch_manager(protocol: &Protocol): &EpochManager {
+    &protocol.epoch_manager
+}
+
+
 // ===== Macros =====
 
 /// Basis points in 100%
@@ -198,7 +212,7 @@ public macro fun default_minimum_liveness_ms(): u64 {
 // ===== Test Only functions =====
 
 #[test_only]
-public fun initialize_for_testing(ctx: &mut TxContext): (Protocol, ProtocolCap) {
+public fun initialize_for_testing(clock: &Clock, ctx: &mut TxContext): (Protocol, ProtocolCap) {
     let publisher = package::test_claim(PROTOCOL(), ctx);
-    initialize(publisher, ctx)
+    initialize(publisher, clock, ctx)
 }
