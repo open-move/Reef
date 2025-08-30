@@ -191,6 +191,9 @@ public fun epoch_manager(protocol: &Protocol): &EpochManager {
     &protocol.epoch_manager
 }
 
+public(package) fun epoch_manager_mut(protocol: &mut Protocol): &mut EpochManager {
+    &mut protocol.epoch_manager
+}
 
 // ===== Macros =====
 

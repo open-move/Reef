@@ -178,8 +178,6 @@ public struct QueryResolved has copy, drop {
 ///
 /// The witness pattern ensures only authorized contracts can create queries,
 /// which helps prevent spam and ensures proper integration.
-///
-/// Queries are always assigned to the next epoch to ensure full epoch time for resolution.
 public fun create_query<CoinType, Witness: drop>(
     _witness: Witness,
     protocol: &mut Protocol,
@@ -383,8 +381,8 @@ public fun challenge_claim<CoinType>(
     );
 
     event::emit(ClaimChallenged {
-        challenger: ctx.sender(),
         query_id: query_id,
+        challenger: ctx.sender(),
         challenged_at_ms: current_time_ms,
     });
 
