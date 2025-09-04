@@ -1,0 +1,6 @@
+build
+.sources
+.DS_Store
+*.log
+.ignore
+reef-v0
