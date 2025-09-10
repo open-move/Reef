@@ -39,6 +39,7 @@ public struct Query<phantom CoinType> has key, store {
     resolver_witness: TypeName,
     proposal: Option<Proposal>,
     balances: Balances<CoinType>,
+    callback_object: Option<ID>,
     resolved_data: Option<vector<u8>>,
 }
 
@@ -118,6 +119,7 @@ public fun create_query<CoinType, Witness: drop>(
     topic: vector<u8>,
     metadata: vector<u8>,
     timestamp_ms: Option<u64>,
+    callback_object: Option<ID>,
     bond_amount: u64,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -147,6 +149,7 @@ public fun create_query<CoinType, Witness: drop>(
         bond_amount,
         timestamp_ms,
         settled: false,
+        callback_object,
         dispute: option::none(),
         proposal: option::none(),
         resolved_data: option::none(),
@@ -391,4 +394,12 @@ public fun topic<CoinType>(query: &Query<CoinType>): vector<u8> {
 
 public fun metadata<CoinType>(query: &Query<CoinType>): vector<u8> {
     query.metadata
+}
+
+public fun bond_amount<CoinType>(query: &Query<CoinType>): u64 {
+    query.bond_amount
+}
+
+public fun callback_id<CoinType>(query: &Query<CoinType>): Option<ID> {
+    query.callback_object
 }

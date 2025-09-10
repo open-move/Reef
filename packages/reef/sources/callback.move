@@ -75,3 +75,11 @@ public fun verify_query_settled<T: drop>(callback: QuerySettled, _: T) {
     let QuerySettled { creator_witness, .. } = callback;
     assert!(creator_witness == type_name::with_defining_ids<T>(), EInvalidCallbackType);
 }
+
+public fun settled_data(callback: &QuerySettled): vector<u8> {
+    callback.data
+}
+
+public fun settled_query_id(callback: &QuerySettled): ID {
+    callback.query_id
+}
