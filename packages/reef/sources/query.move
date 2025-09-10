@@ -1,11 +1,14 @@
 module reef::query;
 
+use reef::callback;
+use reef::macros;
 use reef::protocol::{Self, Protocol};
-use reef::resolver::Resolver;
+use reef::resolver::{Resolver, Resolution};
 use std::type_name::{Self, TypeName};
 use sui::balance::{Self, Balance};
-use sui::clock::{Self, Clock};
+use sui::clock::Clock;
 use sui::coin::Coin;
+use sui::event;
 
 // ====== Error codes ======
 const EInvalidLiveness: u64 = 1;
@@ -15,13 +18,16 @@ const EInvalidState: u64 = 4;
 const ETimestampInFuture: u64 = 5;
 const ECannotProposeTooEarly: u64 = 6;
 const EInsufficientBond: u64 = 7;
-const EAlreadySettled: u64 = 8;
 const ENotExpired: u64 = 9;
 const EInvalidCreatorWitness: u64 = 10;
+const EDataNotProposed: u64 = 11;
+const EWrongQueryResolution: u64 = 12;
+const EStaleResolution: u64 = 13;
+const EWrongResolverType: u64 = 14;
+const EInvalidQueryStatus: u64 = 15;
 
 public struct Query<phantom CoinType> has key, store {
     id: UID,
-    state: State,
     settled: bool,
     topic: vector<u8>,
     bond_amount: u64,
@@ -58,7 +64,7 @@ public struct QueryConfig has copy, drop, store {
     refund_address: Option<address>,
 }
 
-public enum State has copy, drop, store {
+public enum QueryState has copy, drop, store {
     Created,
     Proposed,
     Expired,
@@ -71,6 +77,38 @@ public struct DisputeTicket {
     query_id: ID,
     disputer: address,
     timestamp_ms: u64,
+}
+
+// ====== Events ======
+
+public struct QueryCreated has copy, drop {
+    query_id: ID,
+    creator: address,
+    topic: vector<u8>,
+    bond_amount: u64,
+    timestamp_ms: Option<u64>,
+}
+
+public struct DataProposed has copy, drop {
+    query_id: ID,
+    proposer: address,
+    data: vector<u8>,
+    bond_amount: u64,
+    expires_at_ms: u64,
+}
+
+public struct ProposalDisputed has copy, drop {
+    query_id: ID,
+    disputer: address,
+    disputed_at_ms: u64,
+    bond_amount: u64,
+}
+
+public struct QuerySettled has copy, drop {
+    query_id: ID,
+    resolved_data: vector<u8>,
+    winner: address,
+    total_payout: u64,
 }
 
 public fun create_query<CoinType, Witness: drop>(
@@ -88,32 +126,38 @@ public fun create_query<CoinType, Witness: drop>(
     assert!(protocol.is_coin_type_supported<CoinType>(), EUnsupportedCoinType);
 
     if (timestamp_ms.is_some()) {
-        assert!(*timestamp_ms.borrow() <= clock::timestamp_ms(clock), ETimestampInFuture);
+        assert!(*timestamp_ms.borrow() <= clock.timestamp_ms(), ETimestampInFuture);
     };
 
-    let config = QueryConfig {
-        refund_address: option::none(),
-        liveness_ms: protocol.default_liveness_ms(),
-    };
+    let query_id = object::new(ctx);
+    let id_inner = query_id.to_inner();
 
-    let balances = Balances {
-        bond: balance::zero(),
-        reward: balance::zero(),
-    };
+    event::emit(QueryCreated {
+        query_id: id_inner,
+        creator: ctx.sender(),
+        topic,
+        bond_amount,
+        timestamp_ms,
+    });
 
     Query {
-        id: object::new(ctx),
+        id: query_id,
         topic,
-        config,
-        balances,
         metadata,
         bond_amount,
         timestamp_ms,
         settled: false,
-        state: State::Created,
         dispute: option::none(),
         proposal: option::none(),
         resolved_data: option::none(),
+        balances: Balances {
+            bond: balance::zero(),
+            reward: balance::zero(),
+        },
+        config: QueryConfig {
+            refund_address: option::none(),
+            liveness_ms: protocol.default_liveness_ms(),
+        },
         resolver_witness: resolver.witness_type(),
         creator_witness: type_name::with_defining_ids<Witness>(),
     }
@@ -124,8 +168,9 @@ public fun set_liveness_ms<CoinType, Witness: drop>(
     protocol: &Protocol,
     _: Witness,
     liveness_ms_maybe: Option<u64>,
+    clock: &Clock,
 ) {
-    assert!(query.state == State::Created, EInvalidState);
+    assert!(query.state(clock) == QueryState::Created, EInvalidState);
     assert!(
         query.creator_witness == type_name::with_defining_ids<Witness>(),
         EInvalidCreatorWitness,
@@ -141,8 +186,9 @@ public fun set_refund_address<CoinType, Witness: drop>(
     query: &mut Query<CoinType>,
     _: Witness,
     refund_address: Option<address>,
+    clock: &Clock,
 ) {
-    assert!(query.state == State::Created, EInvalidState);
+    assert!(query.state(clock) == QueryState::Created, EInvalidState);
     assert!(
         query.creator_witness == type_name::with_defining_ids<Witness>(),
         EInvalidCreatorWitness,
@@ -158,25 +204,37 @@ public fun propose_data<CoinType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    assert!(query.state == State::Created, EInvalidState);
+    assert!(query.state(clock) == QueryState::Created, EInvalidState);
+    assert!(
+        !(query.timestamp_ms.is_none() && data == macros::data_too_early!()),
+        ECannotProposeTooEarly,
+    );
 
-    // Check for event-based "too early" restriction
-    if (query.timestamp_ms.is_none()) {};
+    let current_time_ms = clock.timestamp_ms();
+    let bond_amount = bond.value();
+    assert!(bond_amount >= query.bond_amount, EInsufficientBond);
 
-    let current_time_ms = clock::timestamp_ms(clock);
-    assert!(bond.value() >= query.bond_amount, EInsufficientBond);
+    let proposer = ctx.sender();
+    let expires_at_ms = query.config.liveness_ms + current_time_ms;
 
     query
         .proposal
         .fill(Proposal {
             data,
-            proposer: ctx.sender(),
+            proposer,
             proposed_at_ms: current_time_ms,
-            expires_at_ms: query.config.liveness_ms + current_time_ms,
+            expires_at_ms,
         });
 
-    query.state = State::Proposed;
     query.balances.bond.join(bond.into_balance());
+
+    event::emit(DataProposed {
+        query_id: query.id.to_inner(),
+        proposer,
+        data,
+        bond_amount,
+        expires_at_ms,
+    });
 }
 
 public fun dispute_proposal<CoinType>(
@@ -185,17 +243,20 @@ public fun dispute_proposal<CoinType>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): DisputeTicket {
-    assert!(query.state == State::Proposed, EInvalidState);
-    assert!(bond.value() >= query.bond_amount, EInsufficientBond);
+    assert!(query.state(clock) == QueryState::Proposed, EInvalidState);
+    let bond_amount = bond.value();
+    assert!(bond_amount >= query.bond_amount, EInsufficientBond);
+
+    let disputer = ctx.sender();
+    let disputed_at_ms = clock.timestamp_ms();
 
     query
         .dispute
         .fill(Dispute {
-            disputer: ctx.sender(),
-            disputed_at_ms: clock.timestamp_ms(),
+            disputer,
+            disputed_at_ms,
         });
 
-    query.state = State::Disputed;
     query.balances.bond.join(bond.into_balance());
 
     if (query.config.refund_address.is_some()) {
@@ -205,118 +266,123 @@ public fun dispute_proposal<CoinType>(
         };
     };
 
+    event::emit(ProposalDisputed {
+        query_id: query.id.to_inner(),
+        disputer,
+        disputed_at_ms,
+        bond_amount,
+    });
+
     DisputeTicket {
-        disputer: ctx.sender(),
+        disputer,
         query_id: object::id(query),
-        timestamp_ms: clock.timestamp_ms(),
+        timestamp_ms: disputed_at_ms,
     }
 }
 
-public fun settle_expired<CoinType>(
+public fun settle_query<CoinType>(
     query: &mut Query<CoinType>,
+    resolution_maybe: Option<Resolution>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    assert!(query.state == State::Proposed, EInvalidState);
-    let current_time_ms = clock::timestamp_ms(clock);
-
-    query.proposal.do_ref!(|proposal_ref| {
-        assert!(current_time_ms >= proposal_ref.expires_at_ms, ENotExpired);
-        query.resolved_data.fill(proposal_ref.data);
-    });
-
-    query.state = State::Expired;
-    query.settle_payout_expired(ctx)
-}
-
-public fun settle_resolved<CoinType>(
-    query: &mut Query<CoinType>,
-    data: vector<u8>,
-    ctx: &mut TxContext,
-) {
-    assert!(query.state == State::Disputed, EInvalidState);
-
-    query.resolved_data.fill(data);
-    query.state = State::Resolved;
-
-    let dispute_success = data !=  query.proposal.borrow().data;
-    settle_payout_resolved(query, dispute_success, ctx)
-}
-
-fun settle_payout_expired<CoinType>(query: &mut Query<CoinType>, ctx: &mut TxContext) {
-    assert!(!query.settled, EAlreadySettled);
-    query.settled = true;
-    query.state = State::Settled;
-
-    // Proposer gets everything in expired case
-    let mut payout = balance::withdraw_all(&mut query.balances.bond);
-    payout.join(query.balances.reward.withdraw_all());
-
-    // event::emit(QuerySettled {
-    //     query_id: object::id(query),
-    //     resolved_data: query.resolved_data,
-    //     payout_recipient: query.proposer,
-    //     payout_amount: coin::value(&payout_coin),
-    //     currency_type: type_name::with_original_ids<CoinType>(),
-    // });
-
-    transfer::public_transfer(payout.into_coin(ctx), query.proposal.borrow().proposer);
-}
-
-fun settle_payout_resolved<CoinType>(
-    query: &mut Query<CoinType>,
-    dispute_success: bool,
-    _ctx: &mut TxContext,
-) {
-    assert!(!query.settled, EAlreadySettled);
-    query.settled = true;
-    query.state = State::Settled;
-
-    let _winner = if (dispute_success) {
-        query.dispute.borrow().disputer
+    if (resolution_maybe.is_some()) {
+        assert!(query.state(clock) == QueryState::Disputed, EInvalidState);
+        query.apply_resolution(resolution_maybe.destroy_some());
     } else {
-        query.proposal.borrow().proposer
+        assert!(query.state(clock) == QueryState::Expired, EInvalidState);
+
+        let current_time_ms = clock.timestamp_ms();
+        query.proposal.do_ref!(|proposal_ref| {
+            assert!(current_time_ms >= proposal_ref.expires_at_ms, ENotExpired);
+            query.resolved_data.fill(proposal_ref.data);
+        });
     };
 
-    // Calculate burned amount from loser's bond
-    // let (burn_amount, mut payout) = if (dispute_success) {
-    //     // Disputer won - burn from proposer's bond
-    //     let burn_amt = balance::value(&query.proposal_bond) * BURN_RATE / HUNDRED_PERCENT;
-    //     let burned = balance::split(&mut query.proposal_bond, burn_amt);
-    //     let mut payout_balance = balance::withdraw_all(&mut query.dispute_bond);
-    //     balance::join(&mut payout_balance, balance::withdraw_all(&mut query.proposal_bond));
-    //     (burned, payout_balance)
-    // } else {
-    //     // Proposer won - burn from disputer's bond
-    //     let burn_amt = balance::value(&query.dispute_bond) * BURN_RATE / HUNDRED_PERCENT;
-    //     let burned = balance::split(&mut query.dispute_bond, burn_amt);
-    //     let mut payout_balance = balance::withdraw_all(&mut query.proposal_bond);
-    //     balance::join(&mut payout_balance, balance::withdraw_all(&mut query.dispute_bond));
-    //     (burned, payout_balance)
-    // };
+    assert!(query.state(clock) == QueryState::Resolved, EInvalidState);
+    query.settled = true;
 
-    // // Add rewards to payout
-    // balance::join(&mut payout, balance::withdraw_all(&mut query.reward));
+    let mut payout = query.balances.bond.withdraw_all();
+    payout.join(query.balances.reward.withdraw_all());
+    let total_payout = payout.value();
+    let winner = query.winner(clock);
+    let resolved_data = *query.resolved_data.borrow();
 
-    // let payout_coin = coin::from_balance(payout, ctx);
-    // let burn_coin = coin::from_balance(burn_amount, ctx);
+    transfer::public_transfer(payout.into_coin(ctx), winner);
 
-    // event::emit(QuerySettled {
-    //     query_id: object::id(query),
-    //     resolved_data: query.resolved_data,
-    //     payout_recipient: winner,
-    //     payout_amount: coin::value(&payout_coin),
-    //     currency_type: type_name::with_original_ids<CoinType>(),
-    // });
+    event::emit(QuerySettled {
+        query_id: query.id.to_inner(),
+        resolved_data,
+        winner,
+        total_payout,
+    });
+}
 
-    // transfer::public_transfer(payout_coin, winner);
-    // burn_coin // Return the burned amount
+public fun settle_query_with_callback<CoinType>(
+    query: &mut Query<CoinType>,
+    resolution: Resolution,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): callback::QuerySettled {
+    query.settle_query(option::some(resolution), clock, ctx);
+
+    callback::new_query_settled(
+        query.id.to_inner(),
+        *query.resolved_data.borrow(),
+        query.creator_witness,
+    )
+}
+
+fun apply_resolution<CoinType>(query: &mut Query<CoinType>, resolution: Resolution) {
+    assert!(query.proposal.is_some() && query.dispute.is_some(), EDataNotProposed);
+
+    let proposal = query.proposal.borrow();
+
+    assert!(resolution.query_id() == query.id.to_inner(), EWrongQueryResolution);
+
+    let dispute = query.dispute.borrow();
+    assert!(resolution.resolved_at_ms() > dispute.disputed_at_ms, EStaleResolution);
+    assert!(resolution.witness_type() == query.resolver_witness, EWrongResolverType);
+
+    query
+        .resolved_data
+        .fill(if (proposal.data == resolution.data()) { proposal.data } else { resolution.data() });
+}
+
+fun winner<CoinType>(query: &Query<CoinType>, clock: &Clock): address {
+    let state = query.state(clock);
+    assert!(state == QueryState::Resolved || state == QueryState::Expired, EInvalidQueryStatus);
+
+    let proposal = query.proposal.borrow();
+    if (query.resolved_data == option::some(proposal.data) || state == QueryState::Expired) {
+        proposal.proposer
+    } else {
+        query.dispute.borrow().disputer
+    }
 }
 
 // ====== View Functions ======
 
-public fun state<CoinType>(query: &Query<CoinType>): State {
-    query.state
+public fun state<CoinType>(query: &Query<CoinType>, clock: &Clock): QueryState {
+    let current_time = clock.timestamp_ms();
+
+    if (query.proposal.is_none()) return QueryState::Created;
+    if (query.settled) return QueryState::Settled;
+
+    if (query.dispute.is_none()) {
+        let proposal = query.proposal.borrow();
+        if (current_time >= proposal.proposed_at_ms + query.config.liveness_ms) {
+            return QueryState::Expired
+        };
+
+        return QueryState::Proposed
+    };
+
+    if (query.resolved_data.is_some()) {
+        QueryState::Resolved
+    } else {
+        QueryState::Disputed
+    }
 }
 
 public fun topic<CoinType>(query: &Query<CoinType>): vector<u8> {
@@ -325,18 +391,4 @@ public fun topic<CoinType>(query: &Query<CoinType>): vector<u8> {
 
 public fun metadata<CoinType>(query: &Query<CoinType>): vector<u8> {
     query.metadata
-}
-
-public fun is_settleable<CoinType>(query: &Query<CoinType>, clock: &Clock): bool {
-    if (query.settled) {
-        return false
-    };
-
-    if (query.state == State::Proposed) {
-        clock::timestamp_ms(clock) >= query.proposal.borrow().expires_at_ms
-    } else if (query.state == State::Resolved) {
-        true
-    } else {
-        false
-    }
 }

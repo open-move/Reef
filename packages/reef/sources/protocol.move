@@ -41,37 +41,29 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
     (protocol, ProtocolCap { id: object::new(ctx) })
 }
 
-public fun set_default_liveness_ms(
-    protocol: &mut Protocol,
-    _admin: &ProtocolCap,
-    liveness_ms: u64,
-) {
+public fun set_default_liveness_ms(protocol: &mut Protocol, _: &ProtocolCap, liveness_ms: u64) {
     assert!(liveness_ms > min_liveness_ms!(), EInvalidLiveness);
     protocol.default_liveness_ms = liveness_ms;
 }
 
-public fun set_fee_factor_bps(protocol: &mut Protocol, _admin: &ProtocolCap, fee_factor_bps: u64) {
+public fun set_fee_factor_bps(protocol: &mut Protocol, _: &ProtocolCap, fee_factor_bps: u64) {
     assert!(fee_factor_bps <= bps!(), EInvalidFeeFactor);
     protocol.fee_factor_bps = fee_factor_bps;
 }
 
-public fun add_supported_topic(protocol: &mut Protocol, _admin: &ProtocolCap, topic: vector<u8>) {
+public fun add_supported_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: vector<u8>) {
     protocol.supported_topics.add(topic, true);
 }
 
-public fun remove_supported_topic(
-    protocol: &mut Protocol,
-    _admin: &ProtocolCap,
-    topic: vector<u8>,
-) {
+public fun remove_supported_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: vector<u8>) {
     protocol.supported_topics.remove(topic);
 }
 
-public fun add_supported_coin_type<T>(protocol: &mut Protocol, _admin: &ProtocolCap) {
+public fun add_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCap) {
     protocol.supported_coin_types.add(type_name::with_original_ids<T>(), true);
 }
 
-public fun remove_supported_coin_type<T>(protocol: &mut Protocol, _admin: &ProtocolCap) {
+public fun remove_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCap) {
     protocol.supported_coin_types.remove(type_name::with_original_ids<T>());
 }
 

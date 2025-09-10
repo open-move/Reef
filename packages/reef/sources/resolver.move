@@ -19,7 +19,7 @@ public struct ResolverCap has key, store {
 
 public struct Resolution has drop {
     query_id: ID,
-    claim: vector<u8>,
+    data: vector<u8>,
     resolved_at_ms: u64,
     witness_type: TypeName,
 }
@@ -32,7 +32,7 @@ public struct DisputeTicket<phantom CoinType> {
     resolver_witness: TypeName,
 }
 
-public use fun resolution_claim as Resolution.claim;
+public use fun resolution_data as Resolution.data;
 public use fun resolution_query_id as Resolution.query_id;
 public use fun resolution_witness_type as Resolution.witness_type;
 public use fun resolution_resolved_at_ms as Resolution.resolved_at_ms;
@@ -85,14 +85,14 @@ public fun make_resolution<Witness: drop>(
     resolver: &Resolver,
     _witness: Witness,
     query_id: ID,
-    claim: vector<u8>,
+    data: vector<u8>,
     clock: &Clock,
 ): Resolution {
     assert!(resolver.is_enabled, EResolverDisabled);
     assert!(resolver.witness_type == type_name::with_defining_ids<Witness>(), EInvalidWitnessType);
 
     Resolution {
-        claim,
+        data,
         query_id,
         witness_type: resolver.witness_type,
         resolved_at_ms: clock.timestamp_ms(),
@@ -111,8 +111,8 @@ public fun resolution_query_id(resolution: &Resolution): ID {
     resolution.query_id
 }
 
-public fun resolution_claim(resolution: &Resolution): vector<u8> {
-    resolution.claim
+public fun resolution_data(resolution: &Resolution): vector<u8> {
+    resolution.data
 }
 
 public fun resolution_resolved_at_ms(resolution: &Resolution): u64 {
