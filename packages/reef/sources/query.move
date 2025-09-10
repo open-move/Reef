@@ -306,15 +306,17 @@ public fun settle_query<CoinType>(
         });
     };
 
-    assert!(query.state(clock) == QueryState::Resolved, EInvalidState);
-    query.settled = true;
+    let state = query.state(clock);
+    assert!(state == QueryState::Resolved || state == QueryState::Expired, EInvalidState);
 
     let mut payout = query.balances.bond.withdraw_all();
     payout.join(query.balances.reward.withdraw_all());
+    
     let total_payout = payout.value();
     let winner = query.winner(clock);
     let resolved_data = *query.resolved_data.borrow();
 
+    query.settled = true;
     transfer::public_transfer(payout.into_coin(ctx), winner);
 
     event::emit(QuerySettled {
