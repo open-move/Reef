@@ -327,11 +327,11 @@ public fun settle_query<CoinType>(
 
 public fun settle_query_with_callback<CoinType>(
     query: &mut Query<CoinType>,
-    resolution: Resolution,
+    resolution: Option<Resolution>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): callback::QuerySettled {
-    query.settle_query(option::some(resolution), clock, ctx);
+    query.settle_query(resolution, clock, ctx);
 
     callback::new_query_settled(
         query.id.to_inner(),
