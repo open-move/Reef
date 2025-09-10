@@ -131,6 +131,10 @@ public fun create_query<CoinType, Witness: drop>(
         assert!(*timestamp_ms.borrow() <= clock.timestamp_ms(), ETimestampInFuture);
     };
 
+    // TODO: validate metadata length
+    // TODO: validate topic length
+    // TODO: validate bond amount
+
     let query_id = object::new(ctx);
     let id_inner = query_id.to_inner();
 

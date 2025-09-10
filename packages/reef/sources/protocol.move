@@ -26,7 +26,7 @@ fun init(otw: PROTOCOL, ctx: &mut TxContext) {
     package::claim_and_keep(otw, ctx);
 }
 
-public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, ProtocolCap) {
+public fun create(publisher: Publisher, ctx: &mut TxContext): (Protocol, ProtocolCap) {
     assert!(publisher.from_module<PROTOCOL>(), EInvalidPublisher);
 
     let protocol = Protocol {
@@ -39,6 +39,10 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
 
     publisher.burn();
     (protocol, ProtocolCap { id: object::new(ctx) })
+}
+
+public fun transfer_cap(cap: ProtocolCap, recipient: address) {
+    transfer::transfer(cap, recipient)
 }
 
 public fun set_default_liveness_ms(protocol: &mut Protocol, _: &ProtocolCap, liveness_ms: u64) {
