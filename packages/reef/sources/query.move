@@ -11,18 +11,31 @@ use sui::event;
 
 // ====== Error codes ======
 
+/// Thrown when liveness period is below minimum required
 const EInvalidLiveness: u64 = 1;
+/// Thrown when query topic is not supported by protocol
 const EUnsupportedTopic: u64 = 2;
+/// Thrown when coin type is not supported by protocol
 const EUnsupportedCoinType: u64 = 3;
+/// Thrown when query operation is not valid for current state
 const EInvalidState: u64 = 4;
+/// Thrown when timestamp is in the future relative to clock
 const ETimestampInFuture: u64 = 5;
+/// Thrown when trying to propose "too early" data for timestamp queries
 const ECannotProposeTooEarly: u64 = 6;
+/// Thrown when bond amount is below required minimum
 const EInsufficientBond: u64 = 7;
+/// Thrown when creator witness type doesn't match query creator
 const EInvalidCreatorWitness: u64 = 10;
+/// Thrown when trying to apply resolution but no proposal/dispute exists
 const EDataNotProposed: u64 = 11;
+/// Thrown when resolution query ID doesn't match the query being settled
 const EWrongQueryResolution: u64 = 12;
+/// Thrown when resolution timestamp is before dispute timestamp
 const EStaleResolution: u64 = 13;
+/// Thrown when resolution witness type doesn't match resolver
 const EWrongResolverType: u64 = 14;
+/// Thrown when query state is invalid for winner determination
 const EInvalidQueryStatus: u64 = 15;
 
 public struct Query<phantom CoinType> has key, store {
@@ -111,6 +124,22 @@ public struct QuerySettled has copy, drop {
     total_payout: u64,
 }
 
+/// Creates a new query with specified parameters. The query starts in Created state
+/// and validates all inputs against protocol constraints. Creator witness provides
+/// authentication and determines callback authorization.
+///
+/// @param _witness Creator witness for authentication (consumed)
+/// @param protocol Protocol instance for validation
+/// @param resolver Resolver instance for dispute resolution
+/// @param topic Topic identifier (must be protocol-supported)
+/// @param metadata Optional metadata bytes
+/// @param timestamp_ms Optional timestamp for historical queries (must not be future)
+/// @param callback_object_id Optional ID for callback integration
+/// @param bond_amount Required bond amount (must meet protocol minimum)
+/// @param clock System clock for timestamp validation
+/// @param ctx Transaction context
+///
+/// @return New Query object ready to be shared
 public fun create<CoinType, CreatorWitness: drop>(
     _: CreatorWitness,
     protocol: &Protocol,
@@ -165,6 +194,15 @@ public fun create<CoinType, CreatorWitness: drop>(
     query
 }
 
+/// Sets the liveness period for proposals on this query. Only callable before any
+/// proposals are made. The liveness period determines how long proposals remain
+/// open before expiring if not disputed.
+///
+/// @param query Query to modify (must be in Created state)
+/// @param protocol Protocol instance for minimum validation
+/// @param _witness Creator witness for authorization (consumed)
+/// @param liveness_ms_maybe Optional liveness period in milliseconds (uses protocol default if None)
+/// @param clock System clock for state validation
 public fun set_liveness_ms<CoinType, CreatorWitness: drop>(
     query: &mut Query<CoinType>,
     protocol: &Protocol,
@@ -184,6 +222,14 @@ public fun set_liveness_ms<CoinType, CreatorWitness: drop>(
     query.config.liveness_ms = liveness_ms;
 }
 
+/// Sets an optional refund address for rewards upon dispute. When set, any reward
+/// balance will be immediately transferred to this address when a dispute occurs,
+/// regardless of the dispute outcome.
+///
+/// @param query Query to modify (must be in Created state)
+/// @param _witness Creator witness for authorization (consumed)
+/// @param refund_address Optional address to receive rewards when disputed
+/// @param clock System clock for state validation
 public fun set_refund_address<CoinType, CreatorWitness: drop>(
     query: &mut Query<CoinType>,
     _: CreatorWitness,
@@ -199,6 +245,17 @@ public fun set_refund_address<CoinType, CreatorWitness: drop>(
     query.config.refund_address = refund_address;
 }
 
+/// Proposes data for the query with a bond. Transitions query to Proposed state
+/// and starts the liveness countdown. Bond is held until settlement. For timestamp
+/// queries, cannot propose "too early" marker unless timestamp is set.
+///
+/// @param query Query to propose data for (must be in Created state)
+/// @param bond Bond payment (must meet minimum amount)
+/// @param data Proposed data bytes (cannot be "too early" marker for timestamp queries)
+/// @param clock System clock for expiration calculation
+/// @param ctx Transaction context
+///
+/// Emits DataProposed event
 public fun propose_data<CoinType>(
     query: &mut Query<CoinType>,
     bond: Coin<CoinType>,
@@ -236,6 +293,18 @@ public fun propose_data<CoinType>(
     });
 }
 
+/// Disputes the current proposal by posting a bond. Transitions query to Disputed
+/// state and stops the expiration timer. If refund address is set, immediately
+/// transfers any reward balance. Creates dispute ticket for resolver processing.
+///
+/// @param query Query with proposal to dispute (must be in Proposed state)
+/// @param bond Bond payment (must meet minimum amount)
+/// @param clock System clock for timing validation
+/// @param ctx Transaction context
+///
+/// @return DisputeTicket for resolver processing
+///
+/// Emits ProposalDisputed event and transfers rewards to refund address if set
 public fun dispute_proposal<CoinType>(
     query: &mut Query<CoinType>,
     bond: Coin<CoinType>,
@@ -279,6 +348,16 @@ public fun dispute_proposal<CoinType>(
     }
 }
 
+/// Settles the query by distributing bonds to the winner. For disputed queries,
+/// requires resolution from authorized resolver. For expired queries, automatically
+/// awards to proposer. Winner determination based on data match for resolutions.
+///
+/// @param query Query to settle (must be Disputed with resolution OR Expired)
+/// @param resolution_maybe Optional resolution from resolver (required for disputed queries)
+/// @param clock System clock for state validation
+/// @param ctx Transaction context
+///
+/// Transfers all bonds to winner and emits QuerySettled event
 public fun settle<CoinType>(
     query: &mut Query<CoinType>,
     resolution_maybe: Option<Resolution>,
@@ -317,6 +396,16 @@ public fun settle<CoinType>(
     });
 }
 
+/// Settles the query and returns a callback object for external integrations.
+/// Performs same settlement logic as settle() but provides structured callback
+/// data for contracts that need to react to query resolution.
+///
+/// @param query Query to settle
+/// @param resolution Optional resolution from resolver
+/// @param clock System clock for validation
+/// @param ctx Transaction context
+///
+/// @return QuerySettled callback struct for external contract integration
 public fun settle_with_callback<CoinType>(
     query: &mut Query<CoinType>,
     resolution: Option<Resolution>,
@@ -356,6 +445,14 @@ fun winner<CoinType>(query: &Query<CoinType>, clock: &Clock): address {
 
 // ====== View Functions ======
 
+/// Returns the current state of the query based on time and internal state.
+/// State transitions: Created -> Proposed -> (Expired OR Disputed) -> Resolved -> Settled.
+/// Time-based transitions occur automatically based on proposal expiration.
+///
+/// @param query Query to check
+/// @param clock System clock for time-based state transitions
+///
+/// @return Current QueryState (Created, Proposed, Expired, Disputed, Resolved, or Settled)
 public fun state<CoinType>(query: &Query<CoinType>, clock: &Clock): QueryState {
     let current_time = clock.timestamp_ms();
 
@@ -378,20 +475,110 @@ public fun state<CoinType>(query: &Query<CoinType>, clock: &Clock): QueryState {
     }
 }
 
+/// Returns the topic identifier for this query.
+///
+/// @param query Query object
+///
+/// @return Topic bytes
 public fun topic<CoinType>(query: &Query<CoinType>): vector<u8> {
     query.topic
 }
 
+/// Returns the metadata associated with this query.
+///
+/// @param query Query object
+///
+/// @return Metadata bytes
 public fun metadata<CoinType>(query: &Query<CoinType>): vector<u8> {
     query.metadata
 }
 
+/// Returns the required bond amount for proposals and disputes.
+///
+/// @param query Query object
+///
+/// @return Bond amount in coin units
 public fun bond_amount<CoinType>(query: &Query<CoinType>): u64 {
     query.bond_amount
 }
 
+/// Returns the optional callback object ID for external integrations.
+///
+/// @param query Query object
+///
+/// @return Optional object ID for callbacks
 public fun callback_id<CoinType>(query: &Query<CoinType>): Option<ID> {
     query.callback_object_id
+}
+
+/// Returns the proposal data if one exists.
+public fun proposal_data<CoinType>(query: &Query<CoinType>): Option<vector<u8>> {
+    if (query.proposal.is_some()) {
+        option::some(query.proposal.borrow().data)
+    } else {
+        option::none()
+    }
+}
+
+/// Returns the proposer address if a proposal exists.
+public fun proposer<CoinType>(query: &Query<CoinType>): Option<address> {
+    if (query.proposal.is_some()) {
+        option::some(query.proposal.borrow().proposer)
+    } else {
+        option::none()
+    }
+}
+
+/// Returns when the proposal expires (in milliseconds).
+public fun expires_at_ms<CoinType>(query: &Query<CoinType>): Option<u64> {
+    if (query.proposal.is_some()) {
+        option::some(query.proposal.borrow().expires_at_ms)
+    } else {
+        option::none()
+    }
+}
+
+/// Returns the disputer address if the proposal was disputed.
+public fun disputer<CoinType>(query: &Query<CoinType>): Option<address> {
+    if (query.dispute.is_some()) {
+        option::some(query.dispute.borrow().disputer)
+    } else {
+        option::none()
+    }
+}
+
+/// Returns when the proposal was disputed (in milliseconds).
+public fun disputed_at_ms<CoinType>(query: &Query<CoinType>): Option<u64> {
+    if (query.dispute.is_some()) {
+        option::some(query.dispute.borrow().disputed_at_ms)
+    } else {
+        option::none()
+    }
+}
+
+/// Returns the resolved data if the query has been resolved.
+public fun resolved_data<CoinType>(query: &Query<CoinType>): Option<vector<u8>> {
+    query.resolved_data
+}
+
+/// Returns whether the query has been settled.
+public fun is_settled<CoinType>(query: &Query<CoinType>): bool {
+    query.settled
+}
+
+/// Returns the optional timestamp this query is for.
+public fun timestamp_ms<CoinType>(query: &Query<CoinType>): Option<u64> {
+    query.timestamp_ms
+}
+
+/// Returns the liveness period in milliseconds.
+public fun liveness_ms<CoinType>(query: &Query<CoinType>): u64 {
+    query.config.liveness_ms
+}
+
+/// Returns the refund address if one is set.
+public fun refund_address<CoinType>(query: &Query<CoinType>): Option<address> {
+    query.config.refund_address
 }
 
 public macro fun invalid_query(): vector<u8> {
