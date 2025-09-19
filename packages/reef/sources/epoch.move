@@ -207,7 +207,7 @@ public fun end_time_ms(epoch: &Epoch): u64 {
 
 public fun commit_end_time_ms(epoch: &Epoch): u64 {
     let duration = epoch.end_time_ms - epoch.start_time_ms;
-    epoch.start_time_ms + (duration * 60 / 100)
+    epoch.start_time_ms + (duration / 2)
 }
 
 public fun is_in_commit_phase(epoch: &Epoch, clock: &Clock): bool {

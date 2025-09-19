@@ -56,12 +56,12 @@ public fun transfer_cap(cap: ProtocolCap, recipient: address) {
 }
 
 public fun set_default_liveness_ms(protocol: &mut Protocol, _: &ProtocolCap, liveness_ms: u64) {
-    assert!(liveness_ms > min_liveness_ms!(), EInvalidLiveness);
+    assert!(liveness_ms >= min_liveness_ms!(), EInvalidLiveness);
     protocol.default_liveness_ms = liveness_ms;
 }
 
 public fun set_fee_factor_bps(protocol: &mut Protocol, _: &ProtocolCap, fee_factor_bps: u64) {
-    assert!(fee_factor_bps <= bps!(), EInvalidFeeFactor);
+    assert!(fee_factor_bps > 0 && fee_factor_bps <= bps!(), EInvalidFeeFactor);
     protocol.fee_factor_bps = fee_factor_bps;
 }
 
@@ -102,7 +102,7 @@ public fun remove_resolution_fee<T>(protocol: &mut Protocol, _: &ProtocolCap) {
 public fun resolution_fee<T>(protocol: &Protocol): u64 {
     let coin_type = type_name::with_original_ids<T>();
 
-    assert!(protocol.resolution_fees.contains(coin_type), 0);
+    assert!(protocol.resolution_fees.contains(coin_type), EUnsupportedCoinType);
     protocol.resolution_fees[coin_type]
 }
 
