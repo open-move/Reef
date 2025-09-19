@@ -1,4 +1,4 @@
-module default_resolver::stake_manager;
+module truth_resolver::stake_manager;
 
 use reef::epoch::EpochManager;
 use sui::balance::{Self, Balance};
@@ -66,7 +66,7 @@ public(package) fun activate_pending_stakes<CoinType>(
     let current_epoch = epoch_manager.current_epoch_no(clock);
 
     if (current_epoch > manager.last_processed_epoch) {
-        &mut manager.balance.join(manager.activating_next_epoch.withdraw_all());
+        manager.balance.join(manager.activating_next_epoch.withdraw_all());
         manager.last_processed_epoch = current_epoch;
     }
 }
@@ -79,7 +79,7 @@ public fun add_stake<CoinType>(
     clock: &Clock,
 ) {
     activate_pending_stakes(manager, epoch_manager, clock);
-     manager.activating_next_epoch.join(coin.into_balance());
+    manager.activating_next_epoch.join(coin.into_balance());
 }
 
 // Get active stake amount (excludes pending stakes and withdrawals)
@@ -95,7 +95,7 @@ public(package) fun slash<CoinType>(
     clock: &Clock,
 ): Balance<CoinType> {
     activate_pending_stakes(manager, epoch_manager, clock);
-    
+
     let amount = amount.min(manager.balance.value());
     balance::split(&mut manager.balance, amount)
 }
@@ -135,7 +135,10 @@ public fun complete_withdrawal<CoinType>(
     balance.into_coin(ctx)
 }
 
-public fun validate_stake_manager_cap<CoinType>(manager: &StakeManager<CoinType>, cap: &StakeManagerCap) {
+public fun validate_stake_manager_cap<CoinType>(
+    manager: &StakeManager<CoinType>,
+    cap: &StakeManagerCap,
+) {
     assert!(cap.stake_manager_id == manager.id.to_inner(), EStakeManagerCapMismatch);
 }
 

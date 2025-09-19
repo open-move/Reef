@@ -5,6 +5,7 @@ use std::type_name::{Self, TypeName};
 use sui::balance::Balance;
 use sui::clock::Clock;
 use sui::package::Publisher;
+use sui::derived_object;
 
 public struct Resolver has key {
     id: UID,
@@ -31,6 +32,8 @@ public struct DisputeTicket<phantom CoinType> {
     fee: Balance<CoinType>,
     resolver_witness: TypeName,
 }
+
+public struct ResolverCapKey() has copy, drop, store;
 
 public use fun resolution_data as Resolution.data;
 public use fun resolution_query_id as Resolution.query_id;
@@ -63,15 +66,15 @@ public fun create<Witness: drop>(
     assert!(publisher.from_module<Witness>(), EInvalidPublisher);
     publisher.burn();
 
-    let resolver = Resolver {
+    let mut resolver = Resolver {
         id: object::new(ctx),
         is_enabled: false,
         witness_type: type_name::with_defining_ids<Witness>(),
     };
 
     let resolver_cap = ResolverCap {
-        id: object::new(ctx),
         resolver_id: resolver.id.to_inner(),
+        id: derived_object::claim(&mut resolver.id, ResolverCapKey()),
     };
 
     (resolver, resolver_cap)

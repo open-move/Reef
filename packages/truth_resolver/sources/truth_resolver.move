@@ -1,30 +1,22 @@
-module default_resolver::resolver_impl;
+module truth_resolver::truth_resolver;
 
 use reef::epoch::{Epoch, EpochManager};
 use reef::resolver::{Self, ResolverCap};
-use default_resolver::stake_manager::StakeManager;
+use sui::balance;
 use sui::clock::Clock;
 use sui::hash;
 use sui::package::{Self, Publisher};
 use sui::table::{Self, Table};
-use sui::vec_map::VecMap;
-use default_resolver::stake_manager::StakeManagerCap;
+use sui::vec_map::{Self, VecMap};
+use truth_resolver::stake_manager::{StakeManager, StakeManagerCap};
 
-public struct DisputeResolver has key {
+public struct TruthResolver has key {
     id: UID,
     cumulative_stake: u64,
     config: ResolverConfig,
     resolver_cap: ResolverCap,
-    user_tracker: Table<address, Tracker>,
+    voters_state: Table<address, VoterState>,
 }
-
-public struct RESOLVER_IMPL() has drop;
-
-public struct Witness() has drop;
-
-public struct VoteKey(ID) has copy, drop, store;
-public struct EpochConfigKey() has copy, drop, store;
-public struct VotingPowerKey(address) has copy, drop, store;
 
 public struct Vote has store {
     total_participating_stake: u64,
@@ -34,9 +26,9 @@ public struct Vote has store {
     commitments: Table<address, vector<u8>>,
 }
 
-public struct Tracker has drop, store {
-    last_processed_epoch: u64,
-    pending_disputes: vector<ID>,
+public struct VoterState has store {
+    last_processed: u64,
+    pending_epochs: VecMap<u64, vector<ID>>,
 }
 
 public struct EpochConfig has copy, drop, store {
@@ -64,6 +56,14 @@ public struct Dispute has key, store {
     active_epoch_no: u64,
 }
 
+public struct Witness() has drop;
+
+public struct TRUTH_RESOLVER() has drop;
+
+public struct VoteKey(ID) has copy, drop, store;
+public struct EpochConfigKey() has copy, drop, store;
+public struct VotingPowerKey(address) has copy, drop, store;
+
 const EInvalidPublisher: u64 = 0;
 const EAlreadyCommitted: u64 = 1;
 const EDidNotCommit: u64 = 2;
@@ -71,21 +71,21 @@ const EInvalidVote: u64 = 3;
 const ENotInCommitPhase: u64 = 4;
 const ENotInRevealPhase: u64 = 5;
 
-fun init(otw: RESOLVER_IMPL, ctx: &mut TxContext) {
+fun init(otw: TRUTH_RESOLVER, ctx: &mut TxContext) {
     package::claim_and_keep(otw, ctx)
 }
 
-public fun create(publisher: Publisher, ctx: &mut TxContext): DisputeResolver {
-    assert!(publisher.from_module<RESOLVER_IMPL>(), EInvalidPublisher);
+public fun create(publisher: Publisher, ctx: &mut TxContext): TruthResolver {
+    assert!(publisher.from_module<TRUTH_RESOLVER>(), EInvalidPublisher);
 
     let (resolver, resolver_cap) = resolver::create(Witness(), publisher, ctx);
     resolver.share();
 
-    DisputeResolver {
+    TruthResolver {
         id: object::new(ctx),
         resolver_cap,
         cumulative_stake: 0,
-        user_tracker: table::new(ctx),
+        voters_state: table::new(ctx),
         config: ResolverConfig {
             no_vote_slashing_rate_bps: default_no_vote_slashing_bps!(),
             wrong_vote_slashing_rate_bps: default_wrong_vote_slashing_bps!(),
@@ -94,7 +94,7 @@ public fun create(publisher: Publisher, ctx: &mut TxContext): DisputeResolver {
 }
 
 public fun commit<CoinType>(
-    resolver: &mut DisputeResolver,
+    resolver: &mut TruthResolver,
     epoch_manager: &mut EpochManager,
     stake_manager: &mut StakeManager<CoinType>,
     stake_manager_cap: &StakeManagerCap,
@@ -104,13 +104,37 @@ public fun commit<CoinType>(
     ctx: &mut TxContext,
 ) {
     stake_manager.validate_stake_manager_cap(stake_manager_cap);
-    {
-        let epoch = epoch_manager.current_epoch_mut(clock);
-        assert!(epoch.is_in_commit_phase(clock), ENotInCommitPhase);
-    };
+
+    let epoch = epoch_manager.current_epoch(clock);
+    assert!(epoch.is_in_commit_phase(clock), ENotInCommitPhase);
 
     let voter = ctx.sender();
-    resolver.process_voter_slash(epoch_manager, stake_manager, voter, clock);
+    resolver.settle_pending_state(epoch_manager, stake_manager, voter, clock);
+
+    // Track this dispute in voter's pending epochs for future slashing evaluation
+    if (!resolver.voters_state.contains(voter)) {
+        resolver
+            .voters_state
+            .add(
+                voter,
+                VoterState {
+                    last_processed: 0,
+                    pending_epochs: vec_map::empty(),
+                },
+            );
+    };
+
+    let voter_state = resolver.voters_state.borrow_mut(voter);
+    let epoch_no = dispute.active_epoch_no;
+
+    if (voter_state.pending_epochs.contains(&epoch_no)) {
+        let disputes = voter_state.pending_epochs.get_mut(&epoch_no);
+        if (!disputes.contains(&dispute.id.to_inner())) {
+            disputes.push_back(dispute.id.to_inner());
+        };
+    } else {
+        voter_state.pending_epochs.insert(epoch_no, vector[dispute.id.to_inner()]);
+    };
 
     let epoch = epoch_manager.current_epoch_mut(clock);
     let vote = resolver.get_vote_mut(epoch, dispute.id.to_inner());
@@ -120,7 +144,7 @@ public fun commit<CoinType>(
 }
 
 public fun reveal(
-    resolver: &mut DisputeResolver,
+    resolver: &mut TruthResolver,
     epoch_manager: &mut EpochManager,
     dispute: &Dispute,
     salt: vector<u8>,
@@ -161,7 +185,7 @@ public fun reveal(
 }
 
 public fun request_withdrawal<CoinType>(
-    resolver: &mut DisputeResolver,
+    resolver: &mut TruthResolver,
     epoch_manager: &mut EpochManager,
     stake_manager: &mut StakeManager<CoinType>,
     stake_manager_cap: &StakeManagerCap,
@@ -169,11 +193,11 @@ public fun request_withdrawal<CoinType>(
     clock: &Clock,
     ctx: TxContext,
 ) {
-    resolver.process_voter_slash(epoch_manager, stake_manager, ctx.sender(), clock);
+    resolver.settle_pending_state(epoch_manager, stake_manager, ctx.sender(), clock);
     stake_manager.request_withdrawal(stake_manager_cap, epoch_manager, amount, clock)
 }
 
-fun freeze_epoch_config(resolver: &DisputeResolver, epoch: &mut Epoch) {
+fun freeze_epoch_config(resolver: &TruthResolver, epoch: &mut Epoch) {
     let storage = epoch.storage_mut(&resolver.resolver_cap);
     if (!storage.contains(EpochConfigKey())) {
         let epoch_config = EpochConfig {
@@ -188,7 +212,7 @@ fun freeze_epoch_config(resolver: &DisputeResolver, epoch: &mut Epoch) {
 
 public fun is_resolved(
     dispute: &Dispute,
-    resolver: &DisputeResolver,
+    resolver: &TruthResolver,
     epoch_manager: &EpochManager,
 ): bool {
     let epoch = epoch_manager.get_epoch(dispute.active_epoch_no);
@@ -207,8 +231,8 @@ public fun is_resolved(
     participation_rate >= cfg.min_participation_rate_bps && consensus_rate >= cfg.min_consensus_rate_bps
 }
 
-public fun process_voter_slash<CoinType>(
-    resolver: &mut DisputeResolver,
+public fun settle_pending_state<CoinType>(
+    resolver: &mut TruthResolver,
     epoch_manager: &mut EpochManager,
     stake_manager: &mut StakeManager<CoinType>,
     voter: address,
@@ -216,58 +240,100 @@ public fun process_voter_slash<CoinType>(
 ) {
     stake_manager.activate_pending_stakes(epoch_manager, clock);
 
+    if (!resolver.voters_state.contains(voter)) {
+        resolver
+            .voters_state
+            .add(
+                voter,
+                VoterState {
+                    last_processed: 0,
+                    pending_epochs: vec_map::empty(),
+                },
+            );
 
-    // let _epoch = epoch_manager.get_epoch(last_processed);
-    // let voting_power = resolver.get_voting_power(epoch, voter);
+        return // No pending disputes for new voter
+    };
 
-    // let mut i = 0;
+    let voter_state = &resolver.voters_state[voter];
+    let current_epoch_no = epoch_manager.current_epoch(clock).epoch_no();
 
-    // let pending_slash = 0;
-    // while (i < tracker.pending_disputes.length()) {
-    //     let dispute_id = tracker.pending_disputes[i];
-    //     let vote = resolver.get_vote(epoch, dispute_id);
-    //     let status = vote.voting_status(voter);
+    // Process all pending epochs that have ended
+    let mut total_slash = 0;
+    let mut epochs_to_remove = vector[];
 
-    //     let amount = match (status) {
-    //         VotingStatus::NoVote => (voting_power * resolver.config.no_vote_slashing_rate_bps) / bps!(),
-    //         VotingStatus::WrongVote => (voting_power * resolver.config.no_vote_slashing_rate_bps) / bps!(),
-    //         _ => 0,
-    //     };
+    voter_state.pending_epochs.length().do!(|i| {
+        let (epoch_no_ref, dispute_id_refs) = voter_state.pending_epochs.get_entry_by_idx(i);
+        let epoch_no = *epoch_no_ref;
 
-    //     pending_slash = pending_slash + amount;
-    //     if (
-    //         dispute_id != tracker.pending_disputes[i] && tracker.pending_disputes.length() - 1 !=i
-    //     ) {
-    //         let slash = stake_manager.slash(epoch_manager, amount, clock);
-    //         slash.destroy_zero() // destroy for now
-    //     };
+        if (epoch_no < current_epoch_no) {
+            let epoch = epoch_manager.get_epoch(epoch_no);
+            let voting_power = resolver.get_voting_power(epoch, voter);
 
-    //     tracker.pending_disputes.swap_remove(i);
-    // };
+            let mut epoch_slash = 0;
+            dispute_id_refs.do_ref!(|id_ref| {
+                let vote = resolver.get_vote(epoch, *id_ref);
+                let status = vote.voting_status(voter);
+
+                let slash_amount = match (status) {
+                    VotingStatus::NoVote => (voting_power * resolver.config.no_vote_slashing_rate_bps) / bps!(),
+                    VotingStatus::WrongVote => (voting_power * resolver.config.wrong_vote_slashing_rate_bps) / bps!(),
+                    VotingStatus::CorrectVote => 0,
+                };
+
+                epoch_slash = epoch_slash + slash_amount;
+            });
+
+            total_slash = total_slash + epoch_slash;
+            epochs_to_remove.push_back(epoch_no);
+        };
+    });
+
+    // Remove processed epochs
+    let mut k = 0;
+    let voter_state = resolver.voters_state.borrow_mut(voter);
+    while (k < epochs_to_remove.length()) {
+        voter_state.pending_epochs.remove(&epochs_to_remove[k]);
+        k = k + 1;
+    };
+
+    // Apply total slash if any
+    if (total_slash > 0) {
+        let slash = stake_manager.slash(epoch_manager, total_slash, clock);
+        balance::destroy_zero(slash); // For now, destroy the slashed coins
+    };
+
+    // Update last processed epoch
+    if (epochs_to_remove.length() > 0) {
+        voter_state.last_processed = current_epoch_no - 1;
+    };
 }
 
 fun voting_status(vote: &Vote, voter: address): VotingStatus {
     if (!vote.reveals.contains(voter)) return VotingStatus::NoVote;
-    let winner = vote.current_winner.destroy_with_default(vector[]);
-    if (vote.reveals[voter] == winner) {
-        return VotingStatus::CorrectVote
+
+    // Check if voter's reveal matches the current winner
+    if (vote.current_winner.is_some()) {
+        let winner = vote.current_winner.borrow();
+        if (vote.reveals[voter] == *winner) {
+            return VotingStatus::CorrectVote
+        };
     };
     VotingStatus::WrongVote
 }
 
-public fun get_voting_power(resolver: &DisputeResolver, epoch: &Epoch, voter: address): u64 {
+public fun get_voting_power(resolver: &TruthResolver, epoch: &Epoch, voter: address): u64 {
     *epoch.storage(&resolver.resolver_cap).borrow<_, u64>(VotingPowerKey(voter))
 }
 
-public fun get_vote(resolver: &DisputeResolver, epoch: &Epoch, dispute_id: ID): &Vote {
+public fun get_vote(resolver: &TruthResolver, epoch: &Epoch, dispute_id: ID): &Vote {
     epoch.storage(&resolver.resolver_cap).borrow<_, Vote>(VoteKey(dispute_id))
 }
 
-public fun get_vote_mut(resolver: &DisputeResolver, epoch: &mut Epoch, dispute_id: ID): &mut Vote {
+public fun get_vote_mut(resolver: &TruthResolver, epoch: &mut Epoch, dispute_id: ID): &mut Vote {
     epoch.storage_mut(&resolver.resolver_cap).borrow_mut<_, Vote>(VoteKey(dispute_id))
 }
 
-public fun epcoch_config(resolver: &DisputeResolver, epoch: &Epoch): &EpochConfig {
+public fun epcoch_config(resolver: &TruthResolver, epoch: &Epoch): &EpochConfig {
     epoch.storage(&resolver.resolver_cap).borrow<_, EpochConfig>(EpochConfigKey())
 }
 
