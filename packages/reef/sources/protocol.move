@@ -208,7 +208,7 @@ public macro fun min_liveness_ms(): u64 {
     5 * 60 * 1000
 }
 
-macro fun bps(): u64 {
+public macro fun bps(): u64 {
     10_000
 }
 

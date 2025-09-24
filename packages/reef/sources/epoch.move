@@ -261,7 +261,17 @@ public fun end_time_ms(epoch: &Epoch): u64 {
 /// @return Timestamp when commit phase ends
 public fun commit_end_time_ms(epoch: &Epoch): u64 {
     let duration = epoch.end_time_ms - epoch.start_time_ms;
-    epoch.start_time_ms + (duration / 2)
+    epoch.start_time_ms + (duration / 3)
+}
+
+/// Returns the timestamp when the reveal phase ends.
+///
+/// @param epoch Epoch object
+///
+/// @return Timestamp when reveal phase ends
+public fun reveal_end_time_ms(epoch: &Epoch): u64 {
+    let duration = epoch.end_time_ms - epoch.start_time_ms;
+    epoch.start_time_ms + (2 * duration / 3)
 }
 
 /// Checks if the epoch is currently in the commit phase (first half).
@@ -275,7 +285,7 @@ public fun is_in_commit_phase(epoch: &Epoch, clock: &Clock): bool {
     current_time >= epoch.start_time_ms && current_time < epoch.commit_end_time_ms()
 }
 
-/// Checks if the epoch is currently in the reveal phase (second half).
+/// Checks if the epoch is currently in the reveal phase (second third).
 ///
 /// @param epoch Epoch object
 /// @param clock System clock for current time
@@ -283,7 +293,18 @@ public fun is_in_commit_phase(epoch: &Epoch, clock: &Clock): bool {
 /// @return True if in reveal phase
 public fun is_in_reveal_phase(epoch: &Epoch, clock: &Clock): bool {
     let current_time = clock.timestamp_ms();
-    current_time >= epoch.commit_end_time_ms() && current_time < epoch.end_time_ms
+    current_time >= epoch.commit_end_time_ms() && current_time < epoch.reveal_end_time_ms()
+}
+
+/// Checks if the epoch is currently in the verification phase (last third).
+///
+/// @param epoch Epoch object
+/// @param clock System clock for current time
+///
+/// @return True if in verification phase
+public fun is_in_verification_phase(epoch: &Epoch, clock: &Clock): bool {
+    let current_time = clock.timestamp_ms();
+    current_time >= epoch.reveal_end_time_ms() && current_time < epoch.end_time_ms
 }
 
 /// Returns the duration of epochs in milliseconds.

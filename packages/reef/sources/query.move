@@ -2,7 +2,7 @@ module reef::query;
 
 use reef::callback;
 use reef::protocol::{Self, Protocol};
-use reef::resolver::{Resolver, Resolution};
+use reef::resolver::{Self, Resolver, Resolution, DisputeTicket};
 use std::type_name::{Self, TypeName};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
@@ -84,12 +84,6 @@ public enum QueryState has copy, drop, store {
     Disputed,
     Resolved,
     Settled,
-}
-
-public struct DisputeTicket {
-    query_id: ID,
-    disputer: address,
-    timestamp_ms: u64,
 }
 
 // ====== Events ======
@@ -297,6 +291,7 @@ public fun propose_data<CoinType>(
 /// state and stops the expiration timer. If refund address is set, immediately
 /// transfers any reward balance. Creates dispute ticket for resolver processing.
 ///
+/// @param protocol Protocol object
 /// @param query Query with proposal to dispute (must be in Proposed state)
 /// @param bond Bond payment (must meet minimum amount)
 /// @param clock System clock for timing validation
@@ -306,11 +301,12 @@ public fun propose_data<CoinType>(
 ///
 /// Emits ProposalDisputed event and transfers rewards to refund address if set
 public fun dispute_proposal<CoinType>(
+    protocol: &Protocol,
     query: &mut Query<CoinType>,
     bond: Coin<CoinType>,
     clock: &Clock,
     ctx: &mut TxContext,
-): DisputeTicket {
+): DisputeTicket<CoinType> {
     assert!(query.state(clock) == QueryState::Proposed, EInvalidState);
     let bond_amount = bond.value();
     assert!(bond_amount >= query.bond_amount, EInsufficientBond);
@@ -341,11 +337,19 @@ public fun dispute_proposal<CoinType>(
         query_id: query.id.to_inner(),
     });
 
-    DisputeTicket {
+    let fee_amount =
+        (
+            (protocol.fee_factor_bps() as u128) * (query.bond_amount as u128)
+         / (protocol::bps!() as u128),
+        ) as u64;
+
+    resolver::new_dispute_ticket<CoinType>(
+        query.id.to_inner(),
+        query.balances.bond.split(fee_amount),
         disputer,
-        query_id: object::id(query),
-        timestamp_ms: disputed_at_ms,
-    }
+        disputed_at_ms,
+        query.resolver_witness,
+    )
 }
 
 /// Settles the query by distributing bonds to the winner. For disputed queries,
@@ -581,14 +585,18 @@ public fun refund_address<CoinType>(query: &Query<CoinType>): Option<address> {
     query.config.refund_address
 }
 
+public fun id<CoinType>(query: &Query<CoinType>): ID {
+    query.id.to_inner()
+}
+
 public macro fun invalid_query(): vector<u8> {
     x"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 }
 
-public macro fun unresolvable(): vector<u8> {
+public macro fun too_early(): vector<u8> {
     x"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe"
 }
 
-public macro fun too_early(): vector<u8> {
+public macro fun unresolvable(): vector<u8> {
     x"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd"
 }

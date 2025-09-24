@@ -1,11 +1,11 @@
-module truth_resolver::stake_manager;
+module truth_resolver::staking_vault;
 
 use reef::epoch::EpochManager;
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::coin::Coin;
 
-public struct StakeManager<phantom CoinType> has key {
+public struct StakingVault<phantom CoinType> has key {
     id: UID,
     balance: Balance<CoinType>,
     /// Delayed stake activation:
@@ -24,33 +24,34 @@ public struct WithdrawalRequest<phantom CoinType> has store {
     unlock_epoch: u64,
 }
 
-public struct StakeManagerCap has key, store {
+public struct StakingVaultCap has key, store {
     id: UID,
-    stake_manager_id: ID,
+    staking_vault_id: ID,
 }
 
 const ENoWithdrawalRequest: u64 = 0;
 const EIncompleteWithdrawalEpoch: u64 = 1;
-const EStakeManagerCapMismatch: u64 = 2;
+const EStakingVaultCapMismatch: u64 = 2;
 
 public(package) fun new<CoinType>(
     coin: Coin<CoinType>,
     epoch_manager: &EpochManager,
     clock: &Clock,
     ctx: &mut TxContext,
-): (StakeManager<CoinType>, StakeManagerCap) {
-    let manager = StakeManager {
+): (StakingVault<CoinType>, StakingVaultCap) {
+    let manager = StakingVault {
         id: object::new(ctx),
         balance: balance::zero(),
+
         // Initial stake will activate next epoch
         activating_next_epoch: coin.into_balance(),
         withdrawal_request: option::none(),
         last_processed_epoch: epoch_manager.current_epoch_no(clock),
     };
 
-    let cap = StakeManagerCap {
+    let cap = StakingVaultCap {
         id: object::new(ctx),
-        stake_manager_id: manager.id.to_inner(),
+        staking_vault_id: manager.id.to_inner(),
     };
 
     (manager, cap)
@@ -59,7 +60,7 @@ public(package) fun new<CoinType>(
 // Process pending stakes for epoch transition
 // Should be called before any stake-dependent operations (voting, slashing, etc.)
 public(package) fun activate_pending_stakes<CoinType>(
-    manager: &mut StakeManager<CoinType>,
+    manager: &mut StakingVault<CoinType>,
     epoch_manager: &EpochManager,
     clock: &Clock,
 ) {
@@ -73,7 +74,7 @@ public(package) fun activate_pending_stakes<CoinType>(
 
 // Add new stake (will be active after next epoch transition)
 public fun add_stake<CoinType>(
-    manager: &mut StakeManager<CoinType>,
+    manager: &mut StakingVault<CoinType>,
     coin: Coin<CoinType>,
     epoch_manager: &EpochManager,
     clock: &Clock,
@@ -83,13 +84,13 @@ public fun add_stake<CoinType>(
 }
 
 // Get active stake amount (excludes pending stakes and withdrawals)
-public fun active_stake<CoinType>(manager: &StakeManager<CoinType>): u64 {
+public fun active_stake<CoinType>(manager: &StakingVault<CoinType>): u64 {
     manager.balance.value()
 }
 
 // Immediate withdrawal for slashing (package-level only)
 public(package) fun slash<CoinType>(
-    manager: &mut StakeManager<CoinType>,
+    manager: &mut StakingVault<CoinType>,
     epoch_manager: &EpochManager,
     amount: u64,
     clock: &Clock,
@@ -102,13 +103,13 @@ public(package) fun slash<CoinType>(
 
 // Initiate user withdrawal with cooldown
 public(package) fun request_withdrawal<CoinType>(
-    manager: &mut StakeManager<CoinType>,
-    cap: &StakeManagerCap,
+    manager: &mut StakingVault<CoinType>,
+    cap: &StakingVaultCap,
     epoch_manager: &EpochManager,
     amount: u64,
     clock: &Clock,
 ) {
-    manager.validate_stake_manager_cap(cap);
+    manager.validate_staking_vault_cap(cap);
     activate_pending_stakes(manager, epoch_manager, clock);
     let current_epoch = epoch_manager.current_epoch_no(clock);
 
@@ -121,7 +122,7 @@ public(package) fun request_withdrawal<CoinType>(
 }
 
 public fun complete_withdrawal<CoinType>(
-    manager: &mut StakeManager<CoinType>,
+    manager: &mut StakingVault<CoinType>,
     epoch_manager: &EpochManager,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -135,11 +136,11 @@ public fun complete_withdrawal<CoinType>(
     balance.into_coin(ctx)
 }
 
-public fun validate_stake_manager_cap<CoinType>(
-    manager: &StakeManager<CoinType>,
-    cap: &StakeManagerCap,
+public fun validate_staking_vault_cap<CoinType>(
+    manager: &StakingVault<CoinType>,
+    cap: &StakingVaultCap,
 ) {
-    assert!(cap.stake_manager_id == manager.id.to_inner(), EStakeManagerCapMismatch);
+    assert!(cap.staking_vault_id == manager.id.to_inner(), EStakingVaultCapMismatch);
 }
 
 macro fun default_cooldown_epoch(): u64 {
