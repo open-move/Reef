@@ -31,6 +31,7 @@ public struct DisputeTicket<phantom CoinType> {
     disputed_at_ms: u64,
     fee: Balance<CoinType>,
     resolver_witness: TypeName,
+    verification_bond_amount: u64,
 }
 
 public struct ResolverCapKey() has copy, drop, store;
@@ -201,6 +202,7 @@ public(package) fun new_dispute_ticket<CoinType>(
     fee: Balance<CoinType>,
     disputer: address,
     timestamp_ms: u64,
+    verification_bond_amount: u64,
     resolver_witness: TypeName,
 ): DisputeTicket<CoinType> {
     DisputeTicket {
@@ -208,6 +210,7 @@ public(package) fun new_dispute_ticket<CoinType>(
         query_id,
         disputer,
         resolver_witness,
+        verification_bond_amount,
         disputed_at_ms: timestamp_ms,
     }
 }
@@ -222,15 +225,16 @@ public(package) fun new_dispute_ticket<CoinType>(
 public fun unpack_dispute_ticket<CoinType, Witness: drop>(
     request: DisputeTicket<CoinType>,
     _witness: Witness,
-): (ID, Balance<CoinType>, address, u64, TypeName) {
+): (ID, Balance<CoinType>, address, u64, u64, TypeName) {
     let DisputeTicket {
         fee,
         query_id,
         disputer,
         resolver_witness,
         disputed_at_ms,
+        verification_bond_amount
     } = request;
 
     assert!(resolver_witness == type_name::with_defining_ids<Witness>(), EInvalidWitnessType);
-    (query_id, fee, disputer, disputed_at_ms, resolver_witness)
+    (query_id, fee, disputer, disputed_at_ms, verification_bond_amount, resolver_witness)
 }

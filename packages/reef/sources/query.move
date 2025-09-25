@@ -239,6 +239,21 @@ public fun set_refund_address<CoinType, CreatorWitness: drop>(
     query.config.refund_address = refund_address;
 }
 
+/// Adds reward incentive for honest proposals. Rewards are distributed to the
+/// winner upon settlement. Can only be called when query is in Created state.
+///
+/// @param query Query to add rewards to (must be in Created state)
+/// @param reward Reward coins to incentivize proposals
+/// @param clock System clock for state validation
+public fun add_reward<CoinType>(
+    query: &mut Query<CoinType>,
+    reward: Coin<CoinType>,
+    clock: &Clock,
+) {
+    assert!(query.state(clock) == QueryState::Created, EInvalidState);
+    query.balances.reward.join(reward.into_balance());
+}
+
 /// Proposes data for the query with a bond. Transitions query to Proposed state
 /// and starts the liveness countdown. Bond is held until settlement. For timestamp
 /// queries, cannot propose "too early" marker unless timestamp is set.
@@ -258,6 +273,10 @@ public fun propose_data<CoinType>(
     ctx: &mut TxContext,
 ) {
     assert!(query.state(clock) == QueryState::Created, EInvalidState);
+
+    // For non-timestamp queries, reject "too_early" value as it's only 
+    // meaningful for timestamp-based queries where data might not yet exist.
+    // Event-based queries should provide actual data or "unresolvable".
     assert!(!(query.timestamp_ms.is_none() && data == too_early!()), ECannotProposeTooEarly);
 
     let bond_amount = bond.value();
@@ -288,8 +307,7 @@ public fun propose_data<CoinType>(
 }
 
 /// Disputes the current proposal by posting a bond. Transitions query to Disputed
-/// state and stops the expiration timer. If refund address is set, immediately
-/// transfers any reward balance. Creates dispute ticket for resolver processing.
+/// state and stops the expiration timer. Creates dispute ticket for resolver processing.
 ///
 /// @param protocol Protocol object
 /// @param query Query with proposal to dispute (must be in Proposed state)
@@ -299,7 +317,7 @@ public fun propose_data<CoinType>(
 ///
 /// @return DisputeTicket for resolver processing
 ///
-/// Emits ProposalDisputed event and transfers rewards to refund address if set
+/// Emits ProposalDisputed event
 public fun dispute_proposal<CoinType>(
     protocol: &Protocol,
     query: &mut Query<CoinType>,
@@ -323,13 +341,6 @@ public fun dispute_proposal<CoinType>(
 
     query.balances.bond.join(bond.into_balance());
 
-    if (query.config.refund_address.is_some()) {
-        if (query.balances.reward.value() > 0) {
-            let reward = query.balances.reward.withdraw_all();
-            transfer::public_transfer(reward.into_coin(ctx), *query.config.refund_address.borrow());
-        };
-    };
-
     event::emit(ProposalDisputed {
         disputer,
         bond_amount,
@@ -343,11 +354,14 @@ public fun dispute_proposal<CoinType>(
          / (protocol::bps!() as u128),
         ) as u64;
 
+    let verification_bond_amount = query.balances.bond.value();
     resolver::new_dispute_ticket<CoinType>(
         query.id.to_inner(),
         query.balances.bond.split(fee_amount),
         disputer,
         disputed_at_ms,
+        // the required bond whoever is challenging the resolver decision has to pay
+        verification_bond_amount,
         query.resolver_witness,
     )
 }
@@ -589,14 +603,12 @@ public fun id<CoinType>(query: &Query<CoinType>): ID {
     query.id.to_inner()
 }
 
-public macro fun invalid_query(): vector<u8> {
-    x"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-}
-
+/// Data value representing a too early query proposal
 public macro fun too_early(): vector<u8> {
     x"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe"
 }
 
+/// Data value representing unresolvable query
 public macro fun unresolvable(): vector<u8> {
     x"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd"
 }
