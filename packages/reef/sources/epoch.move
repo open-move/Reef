@@ -5,7 +5,7 @@ use sui::bag::{Self, Bag};
 use sui::clock::Clock;
 use sui::dynamic_field;
 use sui::event;
-use sui::table::{Self, Table};
+use sui::object_table::{Self, ObjectTable};
 
 /// Thrown when requested epoch number doesn't exist
 const EEpochNotFound: u64 = 0;
@@ -20,7 +20,7 @@ public struct EpochManager has key, store {
     id: UID,
     epoch_duration_ms: u64,
     genesis_timestamp_ms: u64,
-    epochs: Table<u64, Epoch>,
+    epochs: ObjectTable<u64, Epoch>,
 }
 
 public struct Epoch has key, store {
@@ -52,7 +52,7 @@ public(package) fun new_epoch_manager(
 
     let manager = EpochManager {
         id: object::new(ctx),
-        epochs: table::new(ctx),
+        epochs: object_table::new(ctx),
         epoch_duration_ms: duration_ms,
         genesis_timestamp_ms: genesis_time_ms,
     };
