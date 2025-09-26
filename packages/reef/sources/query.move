@@ -43,6 +43,7 @@ const EInvalidQueryStatus: u64 = 15;
 public struct Query<phantom CoinType> has key, store {
     id: UID,
     settled: bool,
+    resolver_id: ID,
     bond_amount: u64,
     topic: vector<u8>,
     config: QueryConfig,
@@ -50,7 +51,6 @@ public struct Query<phantom CoinType> has key, store {
     dispute: Option<Dispute>,
     timestamp_ms: Option<u64>,
     creator_witness: TypeName,
-    resolver_witness: TypeName,
     proposal: Option<Proposal>,
     balances: Balances<CoinType>,
     callback_object_id: Option<ID>,
@@ -167,6 +167,7 @@ public fun create<CoinType, CreatorWitness: drop>(
         callback_object_id,
         dispute: option::none(),
         proposal: option::none(),
+        resolver_id: resolver.id(),
         resolved_data: option::none(),
         balances: Balances {
             bond: balance::zero(),
@@ -176,7 +177,6 @@ public fun create<CoinType, CreatorWitness: drop>(
             refund_address: option::none(),
             liveness_ms: protocol.default_liveness_ms(),
         },
-        resolver_witness: resolver.witness_type(),
         creator_witness: type_name::with_defining_ids<CreatorWitness>(),
     };
 
@@ -360,12 +360,12 @@ public fun dispute_proposal<CoinType>(
     let verification_bond_amount = query.balances.bond.value();
     resolver::new_dispute_ticket<CoinType>(
         query.id.to_inner(),
+        query.resolver_id,
         query.balances.bond.split(fee_amount),
         disputer,
         disputed_at_ms,
         // the required bond whoever is challenging the resolver decision has to pay
         verification_bond_amount,
-        query.resolver_witness,
     )
 }
 
@@ -446,7 +446,7 @@ fun apply_resolution<CoinType>(query: &mut Query<CoinType>, resolution: Resoluti
     assert!(query.proposal.is_some() && query.dispute.is_some(), EDataNotProposed);
 
     assert!(resolution.query_id() == query.id.to_inner(), EWrongQueryResolution);
-    assert!(resolution.witness_type() == query.resolver_witness, EWrongResolverType);
+    assert!(resolution.resolver_id() == query.resolver_id, EWrongResolverType);
     assert!(resolution.resolved_at_ms() > query.dispute.borrow().disputed_at_ms, EStaleResolution);
 
     query.resolved_data.fill(resolution.data());

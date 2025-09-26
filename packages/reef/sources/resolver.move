@@ -1,16 +1,15 @@
 module reef::resolver;
 
 use reef::protocol::ProtocolCap;
-use std::type_name::{Self, TypeName};
 use sui::balance::Balance;
 use sui::clock::Clock;
-use sui::package::Publisher;
 use sui::derived_object;
+use sui::event;
+use sui::package::Publisher;
 
 public struct Resolver has key {
     id: UID,
     is_enabled: bool,
-    witness_type: TypeName,
 }
 
 public struct ResolverCap has key, store {
@@ -20,45 +19,53 @@ public struct ResolverCap has key, store {
 
 public struct Resolution has drop {
     query_id: ID,
+    resolver_id: ID,
     data: vector<u8>,
     resolved_at_ms: u64,
-    witness_type: TypeName,
 }
 
 public struct DisputeTicket<phantom CoinType> {
     query_id: ID,
     disputer: address,
+    resolver_id: ID,
     disputed_at_ms: u64,
     fee: Balance<CoinType>,
-    resolver_witness: TypeName,
     verification_bond_amount: u64,
 }
 
 public struct ResolverCapKey() has copy, drop, store;
 
+public struct ResolverEnabled has copy, drop {
+    resolver_id: ID,
+}
+
+public struct ResolverDisabled has copy, drop {
+    resolver_id: ID,
+}
+
 public use fun resolution_data as Resolution.data;
 public use fun resolution_query_id as Resolution.query_id;
-public use fun resolution_witness_type as Resolution.witness_type;
+public use fun resolution_resolver_id as Resolution.resolver_id;
 public use fun resolution_resolved_at_ms as Resolution.resolved_at_ms;
 
 public use fun unpack_dispute_ticket as DisputeTicket.unpack;
 
 /// Thrown when publisher is not from the witness module
 const EInvalidPublisher: u64 = 0;
-/// Thrown when witness type doesn't match resolver or dispute ticket
-const EInvalidWitnessType: u64 = 1;
+/// Thrown when resolver cap doesn't match resolver ID
+const EInvalidResolverCap: u64 = 1;
 /// Thrown when resolver is disabled and cannot create resolutions
 const EResolverDisabled: u64 = 2;
 
-/// Creates a new resolver with the given witness type. Resolver starts disabled
-/// and must be enabled by protocol governance before it can provide resolutions.
-/// Witness type determines authorization for resolution creation.
+/// Creates a new resolver. Resolver starts disabled and must be enabled by 
+/// protocol governance before it can provide resolutions. Authorization is
+/// managed through the ResolverCap.
 ///
-/// @param _witness Witness for authentication (consumed)
+/// @param _witness Witness for module verification (consumed)
 /// @param publisher Publisher from witness module (consumed for verification)
 /// @param ctx Transaction context
 ///
-/// @return (Resolver object, ResolverCap for governance)
+/// @return (Resolver object, ResolverCap for authorization)
 public fun create<Witness: drop>(
     _witness: Witness,
     publisher: Publisher,
@@ -70,7 +77,6 @@ public fun create<Witness: drop>(
     let mut resolver = Resolver {
         id: object::new(ctx),
         is_enabled: false,
-        witness_type: type_name::with_defining_ids<Witness>(),
     };
 
     let resolver_cap = ResolverCap {
@@ -95,6 +101,7 @@ public fun share(resolver: Resolver) {
 /// @param _cap ProtocolCap for authorization
 public fun enable(resolver: &mut Resolver, _: &ProtocolCap) {
     resolver.is_enabled = true;
+    event::emit(ResolverEnabled { resolver_id: resolver.id.to_inner() });
 }
 
 /// Disables the resolver from providing new resolutions.
@@ -103,6 +110,16 @@ public fun enable(resolver: &mut Resolver, _: &ProtocolCap) {
 /// @param _cap ProtocolCap for authorization
 public fun disable(resolver: &mut Resolver, _: &ProtocolCap) {
     resolver.is_enabled = false;
+    event::emit(ResolverDisabled { resolver_id: resolver.id.to_inner() });
+}
+
+/// Returns the ID of the resolver.
+///
+/// @param resolver Resolver to get ID from
+///
+/// @return Resolver's object ID
+public fun id(resolver: &Resolver): ID {
+    resolver.id.to_inner()
 }
 
 /// Returns the resolver ID associated with this capability.
@@ -116,29 +133,29 @@ public fun cap_resolver_id(cap: &ResolverCap): ID {
 
 /// Creates a resolution for a disputed query. Provides authoritative data
 /// that determines the winner of the dispute. Resolver must be enabled and
-/// witness type must match.
+/// cap must match the resolver.
 ///
 /// @param resolver Resolver instance (must be enabled)
-/// @param _witness Witness for authentication (consumed)
+/// @param cap ResolverCap for authorization
 /// @param query_id ID of query being resolved
 /// @param data Authoritative data for resolution
 /// @param clock System clock for timestamp
 ///
 /// @return Resolution object for settlement
-public fun make_resolution<Witness: drop>(
+public fun make_resolution(
     resolver: &Resolver,
-    _witness: Witness,
+    cap: &ResolverCap,
     query_id: ID,
     data: vector<u8>,
     clock: &Clock,
 ): Resolution {
     assert!(resolver.is_enabled, EResolverDisabled);
-    assert!(resolver.witness_type == type_name::with_defining_ids<Witness>(), EInvalidWitnessType);
+    assert!(resolver.id.to_inner() == cap.resolver_id, EInvalidResolverCap);
 
     Resolution {
         data,
         query_id,
-        witness_type: resolver.witness_type,
+        resolver_id: resolver.id.to_inner(),
         resolved_at_ms: clock.timestamp_ms(),
     }
 }
@@ -150,15 +167,6 @@ public fun make_resolution<Witness: drop>(
 /// @return True if resolver can create resolutions
 public fun is_enabled(resolver: &Resolver): bool {
     resolver.is_enabled
-}
-
-/// Returns the witness type for this resolver.
-///
-/// @param resolver Resolver to check
-///
-/// @return TypeName of the witness used for authorization
-public fun witness_type(resolver: &Resolver): TypeName {
-    resolver.witness_type
 }
 
 /// Returns the query ID this resolution applies to.
@@ -188,53 +196,54 @@ public fun resolution_resolved_at_ms(resolution: &Resolution): u64 {
     resolution.resolved_at_ms
 }
 
-/// Returns the witness type that created this resolution.
+/// Returns the resolver ID that created this resolution.
 ///
 /// @param resolution Resolution to check
 ///
-/// @return TypeName of creating witness
-public fun resolution_witness_type(resolution: &Resolution): TypeName {
-    resolution.witness_type
+/// @return ID of the resolver that created this resolution
+public fun resolution_resolver_id(resolution: &Resolution): ID {
+    resolution.resolver_id
 }
+
 
 public(package) fun new_dispute_ticket<CoinType>(
     query_id: ID,
+    resolver_id: ID,
     fee: Balance<CoinType>,
     disputer: address,
     timestamp_ms: u64,
     verification_bond_amount: u64,
-    resolver_witness: TypeName,
 ): DisputeTicket<CoinType> {
     DisputeTicket {
         fee,
         query_id,
         disputer,
-        resolver_witness,
+        resolver_id,
         verification_bond_amount,
         disputed_at_ms: timestamp_ms,
     }
 }
 
-/// Unpacks a dispute ticket for processing by a resolver. Validates witness
-/// type matches expected resolver and returns all ticket components.
+/// Unpacks a dispute ticket for processing by a resolver. Validates that the
+/// cap matches the resolver ID in the ticket.
 ///
 /// @param request DisputeTicket to unpack (consumed)
-/// @param _witness Witness for authorization (consumed)
+/// @param cap ResolverCap for authorization
 ///
-/// @return (query_id, fee_balance, disputer_address, disputed_timestamp, resolver_witness_type)
-public fun unpack_dispute_ticket<CoinType, Witness: drop>(
+/// @return (query_id, resolver_id, fee_balance, disputer_address, disputed_timestamp, verification_bond_amount)
+public fun unpack_dispute_ticket<CoinType>(
     request: DisputeTicket<CoinType>,
-    _witness: Witness,
-): (ID, Balance<CoinType>, address, u64, u64, TypeName) {
+    cap: &ResolverCap,
+): (ID, ID, Balance<CoinType>, address, u64, u64) {
     let DisputeTicket {
         fee,
         query_id,
         disputer,
-        resolver_witness,
+        resolver_id,
         disputed_at_ms,
-        verification_bond_amount
+        verification_bond_amount,
     } = request;
 
-    assert!(resolver_witness == type_name::with_defining_ids<Witness>(), EInvalidWitnessType);
-    (query_id, fee, disputer, disputed_at_ms, verification_bond_amount, resolver_witness)
+    assert!(cap.resolver_id == resolver_id, EInvalidResolverCap);
+    (query_id, resolver_id, fee, disputer, disputed_at_ms, verification_bond_amount)
 }
