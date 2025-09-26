@@ -9,7 +9,7 @@ use sui::versioned::{Self, Versioned};
 
 public struct PROTOCOL() has drop;
 
-public struct Protocol has key {
+public struct Protocol has key, store {
     id: UID,
     inner: Versioned,
 }
@@ -71,8 +71,6 @@ const EInvalidPublisher: u64 = 1;
 const EInvalidFeeFactor: u64 = 2;
 /// Thrown when coin type is not supported or resolution fee not set
 const EUnsupportedCoinType: u64 = 3;
-/// Thrown when fee amount is zero
-const EInvalidFee: u64 = 4;
 /// Thrown when topic is empty
 const EEmptyTopic: u64 = 5;
 /// Thrown when topic exceeds maximum length
@@ -197,7 +195,6 @@ public fun remove_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCa
 /// Sets the resolution fee for a specific coin type.
 /// This fee determines the minimum bond amount required.
 public fun set_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap, fee: u64) {
-    assert!(fee > 0, EInvalidFee);
     let coin_type = type_name::with_original_ids<T>();
     let state = protocol.load_state_mut!();
     assert!(state.supported_coin_types.contains(coin_type), EUnsupportedCoinType);
