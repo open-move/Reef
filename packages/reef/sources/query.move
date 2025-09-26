@@ -25,6 +25,8 @@ const ETimestampInFuture: u64 = 5;
 const ECannotProposeTooEarly: u64 = 6;
 /// Thrown when bond amount is below required minimum
 const EInsufficientBond: u64 = 7;
+/// Thrown when metadata exceeds maximum length
+const EMetadataTooLong: u64 = 8;
 /// Thrown when creator witness type doesn't match query creator
 const EInvalidCreatorWitness: u64 = 10;
 /// Thrown when trying to apply resolution but no proposal/dispute exists
@@ -149,6 +151,7 @@ public fun create<CoinType, CreatorWitness: drop>(
     assert!(protocol.is_topic_supported(topic), EUnsupportedTopic);
     assert!(protocol.is_coin_type_supported<CoinType>(), EUnsupportedCoinType);
     assert!(bond_amount >= protocol.minimum_bond<CoinType>(), EInsufficientBond);
+    assert!(metadata.length() <= max_metadata_length!(), EMetadataTooLong);
 
     if (timestamp_ms.is_some()) {
         assert!(*timestamp_ms.borrow() <= clock.timestamp_ms(), ETimestampInFuture);
@@ -611,4 +614,8 @@ public macro fun too_early(): vector<u8> {
 /// Data value representing unresolvable query
 public macro fun unresolvable(): vector<u8> {
     x"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd"
+}
+
+public macro fun max_metadata_length(): u64 {
+    1024 // Maximum 1KB for metadata
 }
