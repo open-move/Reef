@@ -447,7 +447,7 @@ fun apply_resolution<CoinType>(query: &mut Query<CoinType>, resolution: Resoluti
 
     assert!(resolution.query_id() == query.id.to_inner(), EWrongQueryResolution);
     assert!(resolution.resolver_id() == query.resolver_id, EWrongResolverType);
-    assert!(resolution.resolved_at_ms() > query.dispute.borrow().disputed_at_ms, EStaleResolution);
+    assert!(resolution.resolved_at_ms() >= query.dispute.borrow().disputed_at_ms, EStaleResolution);
 
     query.resolved_data.fill(resolution.data());
 }

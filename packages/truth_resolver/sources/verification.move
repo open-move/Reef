@@ -1,6 +1,6 @@
 module truth_resolver::verification;
 
-use sui::balance::Balance;
+use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::table::{Self, Table};
 use sui::vec_map::{Self, VecMap};
@@ -144,22 +144,28 @@ public(package) fun cast_vote<CoinType>(
     let threshold = review.required_threshold;
 
     if (vote_option == accept_vote) {
-        let accept_votes = &mut review.votes[&accept_vote];
-        let accept_votes_count = accept_votes.length();
+        {
+            let reject_votes = review.votes.get_mut(&reject_vote);
+            remove_vote!(reject_votes, voter);
+        };
+
+        let accept_votes = review.votes.get_mut(&accept_vote);
         accept_votes.push_back(voter);
 
-        remove_vote!(&mut review.votes[&reject_vote], voter);
-        if (accept_votes_count >= threshold) {
+        if (accept_votes.length() >= threshold) {
             request.state = VerificationState::Accepted;
             committee.pending_reviews.remove(dispute_id);
         };
     } else {
-        let reject_votes = &mut review.votes[&reject_vote];
-        let reject_votes_count = reject_votes.length();
+        {
+            let accept_votes = review.votes.get_mut(&accept_vote);
+            remove_vote!(accept_votes, voter);
+        };
+
+        let reject_votes = review.votes.get_mut(&reject_vote);
         reject_votes.push_back(voter);
 
-        remove_vote!(&mut review.votes[&accept_vote], voter);
-        if (reject_votes_count >= threshold) {
+        if (reject_votes.length() >= threshold) {
             request.state = VerificationState::Rejected;
             committee.pending_reviews.remove(dispute_id);
         };
@@ -183,6 +189,23 @@ public fun verification_request_state_rejected(): VerificationState {
 public fun verification_request_state_pending(): VerificationState {
     VerificationState::Pending
 }
+
+public(package) fun take_request_data<CoinType>(
+    request: &mut Option<VerificationRequest<CoinType>>,
+): (address, Balance<CoinType>) {
+    let verification_request = option::extract(request);
+    let VerificationRequest {
+        requester,
+        requested_at_ms: _,
+        mut bond,
+        state: _,
+    } = verification_request;
+
+    let bond_balance = balance::withdraw_all(&mut bond);
+    balance::destroy_zero(bond);
+    (requester, bond_balance)
+}
+
 
 macro fun remove_vote($voters: &mut vector<address>, $voter: address) {
     let voter = $voter;
