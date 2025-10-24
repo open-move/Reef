@@ -24,12 +24,12 @@ public struct Resolution has drop {
     resolved_at_ms: u64,
 }
 
-public struct DisputeTicket<phantom CoinType> {
+public struct DisputeTicket<phantom T> {
     query_id: ID,
     disputer: address,
     resolver_id: ID,
     disputed_at_ms: u64,
-    fee: Balance<CoinType>,
+    fee: Balance<T>,
     verification_bond_amount: u64,
 }
 
@@ -57,7 +57,7 @@ const EInvalidResolverCap: u64 = 1;
 /// Thrown when resolver is disabled and cannot create resolutions
 const EResolverDisabled: u64 = 2;
 
-/// Creates a new resolver. Resolver starts disabled and must be enabled by 
+/// Creates a new resolver. Resolver starts disabled and must be enabled by
 /// protocol governance before it can provide resolutions. Authorization is
 /// managed through the ResolverCap.
 ///
@@ -205,15 +205,14 @@ public fun resolution_resolver_id(resolution: &Resolution): ID {
     resolution.resolver_id
 }
 
-
-public(package) fun new_dispute_ticket<CoinType>(
+public(package) fun new_dispute_ticket<T>(
     query_id: ID,
     resolver_id: ID,
-    fee: Balance<CoinType>,
+    fee: Balance<T>,
     disputer: address,
     timestamp_ms: u64,
     verification_bond_amount: u64,
-): DisputeTicket<CoinType> {
+): DisputeTicket<T> {
     DisputeTicket {
         fee,
         query_id,
@@ -231,10 +230,10 @@ public(package) fun new_dispute_ticket<CoinType>(
 /// @param cap ResolverCap for authorization
 ///
 /// @return (query_id, resolver_id, fee_balance, disputer_address, disputed_timestamp, verification_bond_amount)
-public fun unpack_dispute_ticket<CoinType>(
-    request: DisputeTicket<CoinType>,
+public fun unpack_dispute_ticket<T>(
+    request: DisputeTicket<T>,
     cap: &ResolverCap,
-): (ID, ID, Balance<CoinType>, address, u64, u64) {
+): (ID, ID, Balance<T>, address, u64, u64) {
     let DisputeTicket {
         fee,
         query_id,
