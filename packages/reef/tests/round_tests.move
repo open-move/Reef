@@ -77,7 +77,7 @@ fun current_round_creation() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     // Get current round (should auto-create round 0)
-    let current_round = manager.current_round(&clock, scenario.ctx());
+    let current_round = manager.current_round(&clock);
     assert!(current_round.round_no() == 0);
     assert!(current_round.start_time_ms() == manager.genesis_timestamp_ms());
 
@@ -93,7 +93,7 @@ fun next_round_creation() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     // Get next round (should auto-create round 1)
-    let next_round = manager.next_round(&clock, scenario.ctx());
+    let next_round = manager.next_round(&clock);
     assert!(next_round.round_no() == 1);
 
     test_utils::destroy(manager);
@@ -148,7 +148,7 @@ fun get_round_for_timestamp() {
     let genesis = manager.genesis_timestamp_ms();
 
     // Get round for specific timestamp
-    let round = manager.get_round_for_timestamp(genesis + 1500, scenario.ctx());
+    let round = manager.get_round_for_timestamp(genesis + 1500);
     assert!(round.round_no() == 1);
 
     test_utils::destroy(manager);
@@ -161,7 +161,7 @@ fun round_view_functions() {
     let mut manager = setup_custom_round_manager(&mut scenario, 2000); // 2 second rounds
     let clock = clock::create_for_testing(scenario.ctx());
 
-    let round = manager.current_round(&clock, scenario.ctx());
+    let round = manager.current_round(&clock);
 
     // Test all view functions
     let start_time = round.start_time_ms();
@@ -223,7 +223,7 @@ fun storage_not_initialized_by_default() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     // Storage should not be initialized initially
-    assert!(!manager.current_round(&clock, scenario.ctx()).is_storage_initialized(&resolver_cap));
+    assert!(!manager.current_round(&clock).is_storage_initialized(&resolver_cap));
 
     test_utils::destroy(manager);
     test_utils::destroy(resolver_cap);
@@ -260,7 +260,7 @@ fun is_round_active_detection() {
     let mut clock = clock::create_for_testing(scenario.ctx());
 
     // Create round 0
-    let _round0 = manager.current_round(&clock, scenario.ctx());
+    let _round0 = manager.current_round(&clock);
 
     // Round 0 should be active at start
     assert!(manager.is_round_active(0, &clock));
@@ -272,7 +272,7 @@ fun is_round_active_detection() {
     clock.increment_for_testing(1000);
 
     // Create round 1 so it exists before checking if it's active
-    let _round1 = manager.current_round(&clock, scenario.ctx());
+    let _round1 = manager.current_round(&clock);
 
     // Now round 1 should be active, round 0 should not be
     assert!(!manager.is_round_active(0, &clock));
@@ -289,7 +289,7 @@ fun round_phase_detection_basic() {
     let mut manager = setup_custom_round_manager(&mut scenario, 2000); // 2 second rounds
     let clock = clock::create_for_testing(scenario.ctx());
 
-    let round = manager.current_round(&clock, scenario.ctx());
+    let round = manager.current_round(&clock);
 
     // At start of round should be in commit phase
     assert!(round.is_in_commit_phase(&clock));
@@ -312,7 +312,7 @@ fun sequential_round_creation() {
         if (i > 0) {
             clock.increment_for_testing(1000);
         };
-        let round = manager.current_round(&clock, scenario.ctx());
+        let round = manager.current_round(&clock);
         assert!(round.round_no() == i);
         i = i + 1;
     };
@@ -336,21 +336,21 @@ fun round_manager_state_consistency() {
 
     // Create several rounds and verify consistency
     {
-        let round0 = manager.current_round(&clock, scenario.ctx());
+        let round0 = manager.current_round(&clock);
         assert!(round0.round_no() == 0);
         _start0 = round0.start_time_ms();
         _end0 = round0.end_time_ms();
     };
 
     {
-        let round1 = manager.next_round(&clock, scenario.ctx());
+        let round1 = manager.next_round(&clock);
         assert!(round1.round_no() == 1);
         _start1 = round1.start_time_ms();
         _end1 = round1.end_time_ms();
     };
 
     {
-        let round2 = manager.get_or_create_round(2, scenario.ctx());
+        let round2 = manager.get_or_create_round(2);
         assert!(round2.round_no() == 2);
         _start2 = round2.start_time_ms();
     };
@@ -418,7 +418,7 @@ fun large_round_numbers() {
 
     // Test large round number
     let large_round_no = 1000000;
-    let round = manager.get_or_create_round(large_round_no, scenario.ctx());
+    let round = manager.get_or_create_round(large_round_no);
 
     assert!(round.round_no() == large_round_no);
 

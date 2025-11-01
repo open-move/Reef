@@ -3,6 +3,7 @@ module reef::round;
 use reef::resolver::ResolverCap;
 use sui::bag::{Self, Bag};
 use sui::clock::Clock;
+use sui::derived_object;
 use sui::dynamic_field;
 use sui::event;
 use sui::object_table::{Self, ObjectTable};
@@ -35,6 +36,7 @@ public struct Storage has store {
 }
 
 public struct StorageKey(ID) has copy, drop, store;
+public struct RoundKey(u64) has copy, drop, store;
 
 public struct RoundStarted has copy, drop {
     round_no: u64,
@@ -70,12 +72,11 @@ public(package) fun new_round_manager(
 ///
 /// @param manager RoundManager object
 /// @param clock System clock for current time
-/// @param ctx Transaction context for object creation
 ///
 /// @return Mutable reference to next round
-public fun next_round(manager: &mut RoundManager, clock: &Clock, ctx: &mut TxContext): &Round {
+public fun next_round(manager: &mut RoundManager, clock: &Clock): &Round {
     let round_no = current_round_no(manager, clock) + 1;
-    ensure_round_exists(manager, round_no, ctx)
+    ensure_round_exists(manager, round_no)
 }
 
 /// Returns the current round based on the clock time.
@@ -83,12 +84,11 @@ public fun next_round(manager: &mut RoundManager, clock: &Clock, ctx: &mut TxCon
 ///
 /// @param manager RoundManager object (mutable for potential round creation)
 /// @param clock System clock for current time
-/// @param ctx Transaction context for object creation if needed
 ///
 /// @return Reference to current round
-public fun current_round(manager: &mut RoundManager, clock: &Clock, ctx: &mut TxContext): &Round {
+public fun current_round(manager: &mut RoundManager, clock: &Clock): &Round {
     let round_no = round_no_for_timestamp(manager, clock.timestamp_ms());
-    ensure_round_exists(manager, round_no, ctx)
+    ensure_round_exists(manager, round_no)
 }
 
 /// Returns a mutable reference to the current round.
@@ -96,12 +96,11 @@ public fun current_round(manager: &mut RoundManager, clock: &Clock, ctx: &mut Tx
 ///
 /// @param manager RoundManager object
 /// @param clock System clock for current time
-/// @param ctx Transaction context for object creation if needed
 ///
 /// @return Mutable reference to current round
-public fun current_round_mut(manager: &mut RoundManager, clock: &Clock, ctx: &mut TxContext): &mut Round {
+public fun current_round_mut(manager: &mut RoundManager, clock: &Clock): &mut Round {
     let round_no = round_no_for_timestamp(manager, clock.timestamp_ms());
-    ensure_round_exists(manager, round_no, ctx)
+    ensure_round_exists(manager, round_no)
 }
 
 /// Returns the current round number.
@@ -137,15 +136,12 @@ public fun round_boundaries(manager: &RoundManager, round_no: u64): (u64, u64) {
     (start, start + manager.round_duration_ms)
 }
 
-fun ensure_round_exists(
-    manager: &mut RoundManager,
-    round_no: u64,
-    ctx: &mut TxContext,
-): &mut Round { if (!manager.rounds.contains(round_no)) {
+fun ensure_round_exists(manager: &mut RoundManager, round_no: u64): &mut Round {
+    if (!manager.rounds.contains(round_no)) {
         let (start_time, end_time) = round_boundaries(manager, round_no);
 
         let new_round = Round {
-            id: object::new(ctx),
+            id: derived_object::claim(&mut manager.id, RoundKey(round_no)),
             round_no,
             end_time_ms: end_time,
             start_time_ms: start_time,
@@ -158,7 +154,9 @@ fun ensure_round_exists(
             start_time_ms: start_time,
             end_time_ms: end_time,
         });
-    };  manager.rounds.borrow_mut(round_no) }
+    };
+    manager.rounds.borrow_mut(round_no)
+}
 
 /// Returns the next round number after the current one.
 public fun get_next_round_no(manager: &RoundManager, clock: &Clock): u64 {
@@ -191,21 +189,13 @@ public fun get_round_mut(manager: &mut RoundManager, round_no: u64): &mut Round 
 
 /// Gets the round that contains a specific timestamp.
 /// Creates the round if it doesn't exist yet.
-public fun get_round_for_timestamp(
-    manager: &mut RoundManager,
-    timestamp_ms: u64,
-    ctx: &mut TxContext,
-): &Round {
+public fun get_round_for_timestamp(manager: &mut RoundManager, timestamp_ms: u64): &Round {
     let round_no = round_no_for_timestamp(manager, timestamp_ms);
-    ensure_round_exists(manager, round_no, ctx)
+    ensure_round_exists(manager, round_no)
 }
 
-public(package) fun get_or_create_round(
-    manager: &mut RoundManager,
-    round_no: u64,
-    ctx: &mut TxContext,
-): &Round {
-    ensure_round_exists(manager, round_no, ctx)
+public(package) fun get_or_create_round(manager: &mut RoundManager, round_no: u64): &Round {
+    ensure_round_exists(manager, round_no)
 }
 
 /// Returns the start time of the round in milliseconds.
