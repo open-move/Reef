@@ -7,7 +7,7 @@ use std::type_name::{Self, TypeName};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::coin::Coin;
-use sui::event;
+use sui::event::{Self, emit};
 
 // ====== Error codes ======
 
@@ -53,7 +53,7 @@ public struct Query<phantom T> has key, store {
     timestamp_ms: Option<u64>,
     creator_witness: TypeName,
     proposal: Option<Proposal>,
-    callback_object_id: Option<ID>,
+    callback_object_ids: vector<ID>,
     resolved_data: Option<vector<u8>>,
 }
 
@@ -113,6 +113,11 @@ public struct ProposalDisputed has copy, drop {
     bond_amount: u64,
 }
 
+public struct RewardRefunded has copy, drop {
+    query_id: ID,
+    amount: u64,
+}
+
 public struct QuerySettled has copy, drop {
     query_id: ID,
     resolved_data: vector<u8>,
@@ -130,7 +135,7 @@ public struct QuerySettled has copy, drop {
 /// @param topic Topic identifier (must be protocol-supported)
 /// @param metadata Optional metadata bytes
 /// @param timestamp_ms Optional timestamp for historical queries (must not be future)
-/// @param callback_object_id Optional ID for callback integration
+/// @param callback_object_ids vector of object ids for callback integration
 /// @param bond_amount Required bond amount (must meet protocol minimum)
 /// @param clock System clock for timestamp validation
 /// @param ctx Transaction context
@@ -143,7 +148,7 @@ public fun create<T, CreatorWitness: drop>(
     topic: vector<u8>,
     metadata: vector<u8>,
     timestamp_ms: Option<u64>,
-    callback_object_id: Option<ID>,
+    callback_object_ids: vector<ID>,
     bond_amount: u64,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -164,7 +169,7 @@ public fun create<T, CreatorWitness: drop>(
         bond_amount,
         timestamp_ms,
         settled: false,
-        callback_object_id,
+        callback_object_ids,
         dispute: option::none(),
         proposal: option::none(),
         resolver_id: resolver.id(),
@@ -340,12 +345,20 @@ public fun dispute_proposal<T>(
 
     query.balances.bond.join(bond.into_balance());
 
-    query.config.refund_address.is_some_and!(|refund_address| {
-        transfer::public_transfer(
-            query.balances.reward.withdraw_all().into_coin(ctx),
-            *refund_address,
-        )
-    });
+    let refund_amount = query.balances.reward.value();
+    if (refund_amount > 0) {
+        query.config.refund_address.do_ref!(|refund_address| {
+            transfer::public_transfer(
+                query.balances.reward.withdraw_all().into_coin(ctx),
+                *refund_address,
+            )
+        });
+
+        emit(RewardRefunded {
+            query_id: query.id(),
+            amount: refund_amount,
+        })
+    };
 
     event::emit(ProposalDisputed {
         disputer,
@@ -526,13 +539,13 @@ public fun bond_amount<T>(query: &Query<T>): u64 {
     query.bond_amount
 }
 
-/// Returns the optional callback object ID for external integrations.
+/// Returns the callback object IDs for external integrations.
 ///
 /// @param query Query object
 ///
-/// @return Optional object ID for callbacks
-public fun callback_id<T>(query: &Query<T>): Option<ID> {
-    query.callback_object_id
+/// @return Vector of object IDs for callbacks
+public fun callback_ids<T>(query: &Query<T>): vector<ID> {
+    query.callback_object_ids
 }
 
 /// Returns the proposal data if one exists.

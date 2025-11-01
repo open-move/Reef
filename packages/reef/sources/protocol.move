@@ -178,7 +178,7 @@ public fun remove_supported_topic(protocol: &mut Protocol, _: &ProtocolCap, topi
 
 /// Adds a coin type to the list of supported currencies for bonds.
 public fun add_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCap) {
-    let coin_type = type_name::with_original_ids<T>();
+    let coin_type = type_name::with_defining_ids<T>();
     let state = protocol.load_state_mut!();
     state.supported_coin_types.add(coin_type, true);
 
@@ -187,7 +187,7 @@ public fun add_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCap) 
 
 /// Removes a coin type from the list of supported currencies.
 public fun remove_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCap) {
-    let coin_type = type_name::with_original_ids<T>();
+    let coin_type = type_name::with_defining_ids<T>();
     let state = protocol.load_state_mut!();
     state.supported_coin_types.remove(coin_type);
 
@@ -197,7 +197,7 @@ public fun remove_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCa
 /// Sets the resolution fee for a specific coin type.
 /// This fee determines the minimum bond amount required.
 public fun set_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap, fee: u64) {
-    let coin_type = type_name::with_original_ids<T>();
+    let coin_type = type_name::with_defining_ids<T>();
     let state = protocol.load_state_mut!();
     assert!(state.supported_coin_types.contains(coin_type), EUnsupportedCoinType);
 
@@ -206,13 +206,12 @@ public fun set_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap, fee: u6
     };
 
     state.resolver_fees.add(coin_type, fee);
-
     event::emit(ResolverFeeSet { coin_type, fee });
 }
 
 /// Removes the resolution fee for a specific coin type.
 public fun remove_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap) {
-    let coin_type = type_name::with_original_ids<T>();
+    let coin_type = type_name::with_defining_ids<T>();
     let state = protocol.load_state_mut!();
 
     assert!(state.resolver_fees.contains(coin_type), EUnsupportedCoinType);
@@ -227,7 +226,7 @@ public fun remove_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap) {
 ///
 /// @return Resolution fee amount
 public fun resolver_fee<T>(protocol: &Protocol): u64 {
-    let coin_type = type_name::with_original_ids<T>();
+    let coin_type = type_name::with_defining_ids<T>();
     let state = protocol.load_state!();
 
     assert!(state.resolver_fees.contains(coin_type), EUnsupportedCoinType);
@@ -240,7 +239,7 @@ public fun resolver_fee<T>(protocol: &Protocol): u64 {
 ///
 /// @return true if coin type is supported
 public fun is_coin_type_supported<T>(protocol: &Protocol): bool {
-    protocol.load_state!().supported_coin_types.contains(type_name::with_original_ids<T>())
+    protocol.load_state!().supported_coin_types.contains(type_name::with_defining_ids<T>())
 }
 
 /// Checks if a topic is supported for queries.
@@ -270,8 +269,12 @@ public fun default_liveness_ms(protocol: &Protocol): u64 {
 /// @return Minimum bond amount using formula: (resolver_fee * 10000) / fee_factor_bps
 public fun minimum_bond<T>(protocol: &Protocol): u64 {
     let state = protocol.load_state!();
+
+    let coin_type = type_name::with_defining_ids<T>();
+    assert!(state.resolver_fees.contains(coin_type), EUnsupportedCoinType);
+
     (
-        (state.resolver_fees[type_name::with_original_ids<T>()] as u128) * (bps!() as u128) / (state.fee_factor_bps as u128),
+        (state.resolver_fees[coin_type] as u128) * (bps!() as u128) / (state.fee_factor_bps as u128),
     ) as u64
 }
 
