@@ -602,6 +602,30 @@ public fun id<T>(query: &Query<T>): ID {
     query.id.to_inner()
 }
 
+public fun state_created(): State {
+    State::Created
+}
+
+public fun state_proposed(): State {
+    State::Proposed
+}
+
+public fun state_expired(): State {
+    State::Expired
+}
+
+public fun state_disputed(): State {
+    State::Disputed
+}
+
+public fun state_resolved(): State {
+    State::Resolved
+}
+
+public fun state_settled(): State {
+    State::Settled
+}
+
 /// Data value representing a too early query proposal
 public macro fun too_early(): vector<u8> {
     x"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe"

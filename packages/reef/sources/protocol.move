@@ -159,7 +159,7 @@ public fun set_fee_factor_bps(protocol: &mut Protocol, _: &ProtocolCap, fee_fact
 public fun add_supported_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: vector<u8>) {
     assert!(!topic.is_empty(), EEmptyTopic);
     assert!(topic.length() <= max_topic_length!(), ETopicTooLong);
-    
+
     protocol.load_state_mut!().supported_topics.add(topic, true);
     event::emit(TopicAdded { topic });
 }
@@ -215,7 +215,7 @@ public fun remove_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap) {
 
     assert!(state.resolver_fees.contains(coin_type), EUnsupportedCoinType);
     state.resolver_fees.remove(coin_type);
-    
+
     event::emit(ResolverFeeRemoved { coin_type });
 }
 
@@ -314,4 +314,9 @@ macro fun current_protocol_version(): u64 {
 
 public macro fun max_topic_length(): u64 {
     256 // Maximum 256 bytes for a topic
+}
+
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    package::claim_and_keep(PROTOCOL(), ctx);
 }
