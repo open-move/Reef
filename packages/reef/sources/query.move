@@ -340,6 +340,13 @@ public fun dispute_proposal<T>(
 
     query.balances.bond.join(bond.into_balance());
 
+    query.config.refund_address.is_some_and!(|refund_address| {
+        transfer::public_transfer(
+            query.balances.reward.withdraw_all().into_coin(ctx),
+            *refund_address,
+        )
+    });
+
     event::emit(ProposalDisputed {
         disputer,
         bond_amount,

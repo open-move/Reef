@@ -72,9 +72,11 @@ const EInvalidFeeFactor: u64 = 2;
 /// Thrown when coin type is not supported or resolution fee not set
 const EUnsupportedCoinType: u64 = 3;
 /// Thrown when topic is empty
-const EEmptyTopic: u64 = 5;
+const EEmptyTopic: u64 = 4;
 /// Thrown when topic exceeds maximum length
-const ETopicTooLong: u64 = 6;
+const ETopicTooLong: u64 = 5;
+/// Thrown when protocol version is invalid
+const EInvalidProtocolVersion: u64 = 6;
 
 fun init(otw: PROTOCOL, ctx: &mut TxContext) {
     package::claim_and_keep(otw, ctx);
@@ -293,14 +295,14 @@ public macro fun bps(): u64 {
 /// Loads the immutable protocol state for the current version.
 macro fun load_state($protocol: &Protocol): &ProtocolStateV1 {
     let protocol = $protocol;
-    assert!(protocol.inner.version() == current_protocol_version!(), 0);
+    assert!(protocol.inner.version() == current_protocol_version!(), EInvalidProtocolVersion);
     protocol.inner.load_value()
 }
 
 /// Loads the mutable protocol state for the current version.
 macro fun load_state_mut($protocol: &mut Protocol): &mut ProtocolStateV1 {
     let protocol = $protocol;
-    assert!(protocol.inner.version() == current_protocol_version!(), 0);
+    assert!(protocol.inner.version() == current_protocol_version!(), EInvalidProtocolVersion);
     protocol.inner.load_value_mut()
 }
 
