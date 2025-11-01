@@ -40,20 +40,33 @@ const EWrongResolverType: u64 = 14;
 /// Thrown when query state is invalid for winner determination
 const EInvalidQueryStatus: u64 = 15;
 
+/// Optimistic oracle request. Tracks the lifecycle from creation to
+/// settlement, including bonds, proposals, disputes, and callbacks for a given
+/// coin type `T`.
 public struct Query<phantom T> has key, store {
     id: UID,
     settled: bool,
+    /// Resolver object ID that is authorized to resolve this query.
     resolver_id: ID,
+    /// Minimum bond (in coin `T`) required for proposals and disputes.
     bond_amount: u64,
+    /// Bytes describing the oracle topic (e.g., market identifier).
     topic: vector<u8>,
+    /// Query config such as liveness window and refund address.
     config: Config,
+    /// Small arbitrary metadata providrf at creation to contextualize the query offchain.
     metadata: vector<u8>,
     balances: Balances<T>,
     dispute: Option<Dispute>,
+    /// Optional timestamp the query references (used for time-based feeds).
     timestamp_ms: Option<u64>,
+    /// Witness of the query creator's package.
     creator_witness: TypeName,
     proposal: Option<Proposal>,
+    /// Callback object IDs to notify once the query settles.
+    /// Their types (if needed for type args) will be resolved and will be passed in the order that they are in this vector.
     callback_object_ids: vector<ID>,
+    /// Finalized data once settlement occurs, or stored proposal data if expired.
     resolved_data: Option<vector<u8>>,
 }
 
@@ -62,6 +75,7 @@ public struct Balances<phantom T> has store {
     reward: Balance<T>,
 }
 
+/// Proposed data for a query.
 public struct Proposal has store {
     data: vector<u8>,
     proposer: address,
@@ -69,11 +83,15 @@ public struct Proposal has store {
     proposed_at_ms: u64,
 }
 
+/// Dispute marker stored after a challenger posts the required bond.
 public struct Dispute has store {
     disputer: address,
     disputed_at_ms: u64,
 }
 
+/// Per-query configuration controlled by the creator. Contains adjustable
+/// liveness windows and an optional address that should receive rewards if a
+/// dispute occurs.
 public struct Config has copy, drop, store {
     liveness_ms: u64,
     refund_address: Option<address>,
@@ -113,6 +131,8 @@ public struct ProposalDisputed has copy, drop {
     bond_amount: u64,
 }
 
+/// Emitted when a reward is instantly refunded because the query was disputed
+/// and the creator configured a refund address.
 public struct RewardRefunded has copy, drop {
     query_id: ID,
     amount: u64,
@@ -155,7 +175,7 @@ public fun create<T, CreatorWitness: drop>(
 ): Query<T> {
     assert!(protocol.is_topic_supported(topic), EUnsupportedTopic);
     assert!(protocol.is_coin_type_supported<T>(), EUnsupportedCoinType);
-    assert!(bond_amount >= protocol.minimum_bond<T>(), EInsufficientBond);
+    assert!(bond_amount >= protocol.minimum_bond_amount<T>(), EInsufficientBond);
     assert!(metadata.length() <= max_metadata_length!(), EMetadataTooLong);
 
     if (timestamp_ms.is_some()) {
@@ -351,13 +371,13 @@ public fun dispute_proposal<T>(
             transfer::public_transfer(
                 query.balances.reward.withdraw_all().into_coin(ctx),
                 *refund_address,
-            )
-        });
+            );
 
-        emit(RewardRefunded {
-            query_id: query.id(),
-            amount: refund_amount,
-        })
+            emit(RewardRefunded {
+                query_id: query.id(),
+                amount: refund_amount,
+            })
+        });
     };
 
     event::emit(ProposalDisputed {
@@ -544,7 +564,7 @@ public fun bond_amount<T>(query: &Query<T>): u64 {
 /// @param query Query object
 ///
 /// @return Vector of object IDs for callbacks
-public fun callback_ids<T>(query: &Query<T>): vector<ID> {
+public fun callback_object_ids<T>(query: &Query<T>): vector<ID> {
     query.callback_object_ids
 }
 

@@ -1374,7 +1374,7 @@ fun test_bond_amount_at_exact_minimum() {
 
     // Set resolver fee to calculate exact minimum bond
     protocol.set_resolver_fee<TestCoin>(&protocol_cap, 100); // 100 base units
-    let minimum_bond = protocol.minimum_bond<TestCoin>(); // Should be 100 * 10000 / 5000 = 200
+    let minimum_bond_amount = protocol.minimum_bond_amount<TestCoin>(); // Should be 100 * 10000 / 5000 = 200
 
     let clock = clock::create_for_testing(scenario.ctx());
     let query = query::create<TestCoin, _>(
@@ -1385,12 +1385,12 @@ fun test_bond_amount_at_exact_minimum() {
         b"metadata",
         option::none<u64>(),
         vector::empty(),
-        minimum_bond, // Exactly at minimum
+        minimum_bond_amount, // Exactly at minimum
         &clock,
         scenario.ctx(),
     );
 
-    assert!(query.bond_amount() == minimum_bond);
+    assert!(query.bond_amount() == minimum_bond_amount);
 
     cleanup(query, resolver, resolver_cap, protocol, protocol_cap, clock, scenario)
 }
@@ -1582,7 +1582,7 @@ fun test_test_all_view_functions() {
     assert!(query.metadata() == b"test metadata");
     assert!(query.bond_amount() == 300);
     assert!(query.timestamp_ms() == option::some(timestamp));
-    assert!(query.callback_ids() == vector[object::id_from_address(@0xCA11BAC)]);
+    assert!(query.callback_object_ids() == vector[object::id_from_address(@0xCA11BAC)]);
     assert!(query.state(&clock) == query::state_created());
     assert!(!query.is_settled());
     assert!(query.proposal_data() == option::none());

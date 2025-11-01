@@ -139,7 +139,7 @@ public fun set_default_liveness_ms(protocol: &mut Protocol, _: &ProtocolCap, liv
 
 /// Sets the fee factor in basis points for bond calculation. Lower values
 /// require higher bonds relative to resolution fees. Used in formula:
-/// minimum_bond = (resolver_fee * 10000) / fee_factor_bps
+/// minimum_bond_amount = (resolver_fee * 10000) / fee_factor_bps
 ///
 /// @param protocol Protocol object
 /// @param _cap ProtocolCap for authorization
@@ -267,7 +267,7 @@ public fun default_liveness_ms(protocol: &Protocol): u64 {
 /// @param protocol Protocol object
 ///
 /// @return Minimum bond amount using formula: (resolver_fee * 10000) / fee_factor_bps
-public fun minimum_bond<T>(protocol: &Protocol): u64 {
+public fun minimum_bond_amount<T>(protocol: &Protocol): u64 {
     let state = protocol.load_state!();
 
     let coin_type = type_name::with_defining_ids<T>();

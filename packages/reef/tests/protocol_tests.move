@@ -79,7 +79,7 @@ fun test_minimum_bond() {
     protocol.set_resolver_fee<DummyCoin>(&protocol_cap, resolver_fee!());
 
     let expected_bond = (resolver_fee!() * protocol::bps!()) / protocol.fee_factor_bps();
-    assert!(protocol.minimum_bond<DummyCoin>() == expected_bond);
+    assert!(protocol.minimum_bond_amount<DummyCoin>() == expected_bond);
     cleanup(protocol, protocol_cap, scenario)
 }
 
