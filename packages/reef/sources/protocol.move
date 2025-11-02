@@ -130,7 +130,7 @@ public fun transfer_cap(cap: ProtocolCap, recipient: address) {
 /// @param liveness_ms New default liveness in milliseconds (must be >= minimum)
 public fun set_default_liveness_ms(protocol: &mut Protocol, _: &ProtocolCap, liveness_ms: u64) {
     assert!(liveness_ms >= min_liveness_ms!(), EInvalidLiveness);
-    let state = protocol.load_state_mut!();
+    let state = protocol.load_state_mut();
     let old_ms = state.default_liveness_ms;
     state.default_liveness_ms = liveness_ms;
 
@@ -146,7 +146,7 @@ public fun set_default_liveness_ms(protocol: &mut Protocol, _: &ProtocolCap, liv
 /// @param fee_factor_bps Fee factor (1-10000 basis points, used in minimum bond calculation)
 public fun set_fee_factor_bps(protocol: &mut Protocol, _: &ProtocolCap, fee_factor_bps: u64) {
     assert!(fee_factor_bps > 0 && fee_factor_bps <= bps!(), EInvalidFeeFactor);
-    let state = protocol.load_state_mut!();
+    let state = protocol.load_state_mut();
     let old_bps = state.fee_factor_bps;
     state.fee_factor_bps = fee_factor_bps;
 
@@ -162,7 +162,7 @@ public fun add_supported_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: 
     assert!(!topic.is_empty(), EEmptyTopic);
     assert!(topic.length() <= max_topic_length!(), ETopicTooLong);
 
-    protocol.load_state_mut!().supported_topics.add(topic, true);
+    protocol.load_state_mut().supported_topics.add(topic, true);
     event::emit(TopicAdded { topic });
 }
 
@@ -172,14 +172,14 @@ public fun add_supported_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: 
 /// @param _cap ProtocolCap for authorization
 /// @param topic Topic identifier bytes to remove
 public fun remove_supported_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: vector<u8>) {
-    protocol.load_state_mut!().supported_topics.remove(topic);
+    protocol.load_state_mut().supported_topics.remove(topic);
     event::emit(TopicRemoved { topic });
 }
 
 /// Adds a coin type to the list of supported currencies for bonds.
 public fun add_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCap) {
     let coin_type = type_name::with_defining_ids<T>();
-    let state = protocol.load_state_mut!();
+    let state = protocol.load_state_mut();
     state.supported_coin_types.add(coin_type, true);
 
     event::emit(CoinTypeAdded { coin_type });
@@ -188,7 +188,7 @@ public fun add_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCap) 
 /// Removes a coin type from the list of supported currencies.
 public fun remove_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCap) {
     let coin_type = type_name::with_defining_ids<T>();
-    let state = protocol.load_state_mut!();
+    let state = protocol.load_state_mut();
     state.supported_coin_types.remove(coin_type);
 
     event::emit(CoinTypeRemoved { coin_type });
@@ -198,7 +198,7 @@ public fun remove_supported_coin_type<T>(protocol: &mut Protocol, _: &ProtocolCa
 /// This fee determines the minimum bond amount required.
 public fun set_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap, fee: u64) {
     let coin_type = type_name::with_defining_ids<T>();
-    let state = protocol.load_state_mut!();
+    let state = protocol.load_state_mut();
     assert!(state.supported_coin_types.contains(coin_type), EUnsupportedCoinType);
 
     if (state.resolver_fees.contains(coin_type)) {
@@ -212,7 +212,7 @@ public fun set_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap, fee: u6
 /// Removes the resolution fee for a specific coin type.
 public fun remove_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap) {
     let coin_type = type_name::with_defining_ids<T>();
-    let state = protocol.load_state_mut!();
+    let state = protocol.load_state_mut();
 
     assert!(state.resolver_fees.contains(coin_type), EUnsupportedCoinType);
     state.resolver_fees.remove(coin_type);
@@ -227,7 +227,7 @@ public fun remove_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap) {
 /// @return Resolution fee amount
 public fun resolver_fee<T>(protocol: &Protocol): u64 {
     let coin_type = type_name::with_defining_ids<T>();
-    let state = protocol.load_state!();
+    let state = protocol.load_state();
 
     assert!(state.resolver_fees.contains(coin_type), EUnsupportedCoinType);
     state.resolver_fees[coin_type]
@@ -239,7 +239,7 @@ public fun resolver_fee<T>(protocol: &Protocol): u64 {
 ///
 /// @return true if coin type is supported
 public fun is_coin_type_supported<T>(protocol: &Protocol): bool {
-    protocol.load_state!().supported_coin_types.contains(type_name::with_defining_ids<T>())
+    protocol.load_state().supported_coin_types.contains(type_name::with_defining_ids<T>())
 }
 
 /// Checks if a topic is supported for queries.
@@ -249,7 +249,7 @@ public fun is_coin_type_supported<T>(protocol: &Protocol): bool {
 ///
 /// @return true if topic is supported
 public fun is_topic_supported(protocol: &Protocol, topic: vector<u8>): bool {
-    protocol.load_state!().supported_topics.contains(topic)
+    protocol.load_state().supported_topics.contains(topic)
 }
 
 /// Returns the default liveness period in milliseconds.
@@ -258,7 +258,7 @@ public fun is_topic_supported(protocol: &Protocol, topic: vector<u8>): bool {
 ///
 /// @return Default liveness period in milliseconds
 public fun default_liveness_ms(protocol: &Protocol): u64 {
-    protocol.load_state!().default_liveness_ms
+    protocol.load_state().default_liveness_ms
 }
 
 /// Calculates the minimum bond amount for a coin type using the protocol's
@@ -268,7 +268,7 @@ public fun default_liveness_ms(protocol: &Protocol): u64 {
 ///
 /// @return Minimum bond amount using formula: (resolver_fee * 10000) / fee_factor_bps
 public fun minimum_bond_amount<T>(protocol: &Protocol): u64 {
-    let state = protocol.load_state!();
+    let state = protocol.load_state();
 
     let coin_type = type_name::with_defining_ids<T>();
     assert!(state.resolver_fees.contains(coin_type), EUnsupportedCoinType);
@@ -284,7 +284,7 @@ public fun minimum_bond_amount<T>(protocol: &Protocol): u64 {
 ///
 /// @return Fee factor (1-10000 basis points)
 public fun fee_factor_bps(protocol: &Protocol): u64 {
-    protocol.load_state!().fee_factor_bps
+    protocol.load_state().fee_factor_bps
 }
 
 public macro fun min_liveness_ms(): u64 {
@@ -296,15 +296,13 @@ public macro fun bps(): u64 {
 }
 
 /// Loads the immutable protocol state for the current version.
-macro fun load_state($protocol: &Protocol): &ProtocolStateV1 {
-    let protocol = $protocol;
+fun load_state(protocol: &Protocol): &ProtocolStateV1 {
     assert!(protocol.inner.version() == current_protocol_version!(), EInvalidProtocolVersion);
     protocol.inner.load_value()
 }
 
 /// Loads the mutable protocol state for the current version.
-macro fun load_state_mut($protocol: &mut Protocol): &mut ProtocolStateV1 {
-    let protocol = $protocol;
+fun load_state_mut(protocol: &mut Protocol): &mut ProtocolStateV1 {
     assert!(protocol.inner.version() == current_protocol_version!(), EInvalidProtocolVersion);
     protocol.inner.load_value_mut()
 }
