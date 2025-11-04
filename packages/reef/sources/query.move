@@ -527,13 +527,13 @@ public macro fun max_metadata_length(): u64 {
     1024 // Maximum 1KB for metadata
 }
 
-/// Loads the immutable query state for the current version.
+/// Loads the immutable inner query for the current version.
 fun load_inner<T>(query: &Query<T>): &QueryInner<T> {
     assert!(query.inner.version() == query_inner::current_query_version(), EInvalidQueryVersion);
     query.inner.load_value()
 }
 
-/// Loads the mutable query state for the current version.
+/// Loads the mutable inner query for the current version.
 fun load_inner_mut<T>(query: &mut Query<T>): &mut QueryInner<T> {
     assert!(query.inner.version() == query_inner::current_query_version(), EInvalidQueryVersion);
     query.inner.load_value_mut()

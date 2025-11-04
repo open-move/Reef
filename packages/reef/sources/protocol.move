@@ -318,13 +318,13 @@ public(package) fun increment_num_queries(protocol: &mut Protocol) {
     inner.num_queries = inner.num_queries + 1;
 }
 
-/// Loads the immutable protocol state for the current version.
+/// Loads the immutable inner protocol for the current version.
 fun load_inner(protocol: &Protocol): &ProtocolInner {
     assert!(protocol.inner.version() == PROTOCOL_VERSION, EInvalidProtocolVersion);
     protocol.inner.load_value()
 }
 
-/// Loads the mutable protocol state for the current version.
+/// Loads the mutable inner protocol for the current version.
 fun load_inner_mut(protocol: &mut Protocol): &mut ProtocolInner {
     assert!(protocol.inner.version() == PROTOCOL_VERSION, EInvalidProtocolVersion);
     protocol.inner.load_value_mut()
