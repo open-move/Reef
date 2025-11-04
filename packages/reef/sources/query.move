@@ -276,6 +276,7 @@ public fun dispute_proposal<T>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): DisputeTicket<T> {
+    let query_id = query.id.to_inner();
     let query_inner = query.load_state_mut<T>();
     assert!(query_inner.state(clock) == query_inner::state_proposed(), EInvalidState);
 
@@ -289,18 +290,15 @@ public fun dispute_proposal<T>(
     );
 
     // Emit events at outer layer
-    if (refund_amount > 0) {
-        event::emit(RewardRefunded {
-            query_id: query.id.to_inner(),
-            amount: refund_amount,
-        });
+    if (refund_amount > 0 && query_inner.refund_address().is_some()) {
+        event::emit(RewardRefunded { amount: refund_amount, query_id });
     };
 
     event::emit(ProposalDisputed {
         disputer,
+        query_id,
         bond_amount,
         disputed_at_ms: clock.timestamp_ms(),
-        query_id: query.id.to_inner(),
     });
 
     ticket
