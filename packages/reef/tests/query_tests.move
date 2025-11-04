@@ -30,13 +30,13 @@ fun setup_protocol_with_test_coin(scenario: &mut Scenario): (Protocol, ProtocolC
 #[test]
 fun test_create_basic_query() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -60,7 +60,7 @@ fun test_create_basic_query() {
 #[test]
 fun test_create_query_with_timestamp() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let mut clock = clock::create_for_testing(scenario.ctx());
@@ -69,7 +69,7 @@ fun test_create_query_with_timestamp() {
     let timestamp_ms = clock.timestamp_ms();
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"",
@@ -87,13 +87,13 @@ fun test_create_query_with_timestamp() {
 #[test]
 fun test_propose_data_basic() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -118,13 +118,13 @@ fun test_propose_data_basic() {
 #[test]
 fun test_add_reward() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -144,13 +144,13 @@ fun test_add_reward() {
 #[test]
 fun test_set_liveness() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -176,13 +176,13 @@ fun test_set_liveness() {
 #[test]
 fun test_dispute_proposal() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -220,13 +220,13 @@ fun test_dispute_proposal() {
 #[expected_failure(abort_code = query::EUnsupportedTopic)]
 fun test_create_query_fails_unsupported_topic() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"UNSUPPORTED_TOPIC",
         b"",
@@ -244,14 +244,14 @@ fun test_create_query_fails_unsupported_topic() {
 #[expected_failure(abort_code = query::EInsufficientBond)]
 fun test_create_query_fails_insufficient_bond() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     // Try to create with bond less than minimum (minimum is 100 * 10000 / 5000 = 200)
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"",
@@ -269,13 +269,13 @@ fun test_create_query_fails_insufficient_bond() {
 #[expected_failure(abort_code = query::EInvalidLiveness)]
 fun test_create_query_fails_invalid_liveness() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -301,7 +301,7 @@ fun test_create_query_fails_invalid_liveness() {
 #[expected_failure(abort_code = query::ETimestampInFuture)]
 fun test_create_query_fails_timestamp_in_future() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let mut clock = clock::create_for_testing(scenario.ctx());
@@ -310,7 +310,7 @@ fun test_create_query_fails_timestamp_in_future() {
 
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -328,13 +328,13 @@ fun test_create_query_fails_timestamp_in_future() {
 #[expected_failure(abort_code = query::ECannotProposeTooEarly)]
 fun test_propose_data_fails_too_early_for_non_timestamp_query() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -356,7 +356,7 @@ fun test_propose_data_fails_too_early_for_non_timestamp_query() {
 #[expected_failure(abort_code = query::EMetadataTooLong)]
 fun test_create_query_fails_metadata_too_long() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
@@ -372,7 +372,7 @@ fun test_create_query_fails_metadata_too_long() {
 
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         long_metadata,
@@ -399,7 +399,7 @@ fun test_create_query_fails_unsupported_coin_type() {
     let clock = clock::create_for_testing(scenario.ctx());
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -417,13 +417,13 @@ fun test_create_query_fails_unsupported_coin_type() {
 #[expected_failure(abort_code = query::EInvalidCreatorWitness)]
 fun test_set_liveness_fails_wrong_witness() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -449,13 +449,13 @@ fun test_set_liveness_fails_wrong_witness() {
 #[expected_failure(abort_code = query::EInvalidCreatorWitness)]
 fun test_set_refund_address_fails_wrong_witness() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -480,13 +480,13 @@ fun test_set_refund_address_fails_wrong_witness() {
 #[expected_failure(abort_code = query::EInvalidState)]
 fun test_propose_data_fails_already_proposed() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -512,13 +512,13 @@ fun test_propose_data_fails_already_proposed() {
 #[expected_failure(abort_code = query::EInvalidState)]
 fun test_add_reward_fails_after_proposal() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -544,13 +544,13 @@ fun test_add_reward_fails_after_proposal() {
 #[expected_failure(abort_code = query::EInvalidState)]
 fun test_set_liveness_fails_after_proposal() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -580,13 +580,13 @@ fun test_set_liveness_fails_after_proposal() {
 #[expected_failure(abort_code = query::EInvalidState)]
 fun test_set_refund_address_fails_after_proposal() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -615,13 +615,13 @@ fun test_set_refund_address_fails_after_proposal() {
 #[expected_failure(abort_code = query::EInvalidState)]
 fun test_dispute_proposal_fails_not_proposed() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -650,13 +650,13 @@ fun test_dispute_proposal_fails_not_proposed() {
 #[expected_failure(abort_code = query_inner::EInvalidState)]
 fun test_settle_fails_invalid_state() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -677,13 +677,13 @@ fun test_settle_fails_invalid_state() {
 #[expected_failure(abort_code = query_inner::EInsufficientBond)]
 fun test_propose_data_fails_insufficient_bond() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -705,13 +705,13 @@ fun test_propose_data_fails_insufficient_bond() {
 #[expected_failure(abort_code = query_inner::EInsufficientBond)]
 fun test_dispute_proposal_fails_insufficient_bond() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -744,13 +744,13 @@ fun test_dispute_proposal_fails_insufficient_bond() {
 #[expected_failure(abort_code = query::EInvalidState)]
 fun test_dispute_expired_proposal_fails() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let mut clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -786,13 +786,13 @@ fun test_dispute_expired_proposal_fails() {
 #[expected_failure(abort_code = query::EInvalidState)]
 fun test_dispute_already_disputed_proposal_fails() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -838,7 +838,7 @@ fun test_dispute_already_disputed_proposal_fails() {
 #[expected_failure(abort_code = query_inner::EInvalidState)]
 fun test_settle_with_resolution_fails_no_proposal() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (mut resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     // Enable the resolver
@@ -847,7 +847,7 @@ fun test_settle_with_resolution_fails_no_proposal() {
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -877,7 +877,7 @@ fun test_settle_with_resolution_fails_no_proposal() {
 #[expected_failure(abort_code = query::EWrongQueryResolution)]
 fun test_settle_with_wrong_query_resolution_fails() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (mut resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     // Enable the resolver
@@ -886,7 +886,7 @@ fun test_settle_with_wrong_query_resolution_fails() {
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query1 = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -899,7 +899,7 @@ fun test_settle_with_wrong_query_resolution_fails() {
 
     let query2 = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -951,7 +951,7 @@ fun test_settle_with_wrong_query_resolution_fails() {
 #[expected_failure(abort_code = query_inner::EStaleResolution)]
 fun test_settle_with_stale_resolution_fails() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (mut resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     // Enable the resolver
@@ -960,7 +960,7 @@ fun test_settle_with_stale_resolution_fails() {
     let mut clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1025,7 +1025,7 @@ fun setup_wrong_resolver(scenario: &mut Scenario): (Resolver, ResolverCap) {
 #[expected_failure(abort_code = query_inner::EWrongResolverType)]
 fun test_settle_with_wrong_resolver_type_fails() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
     let (mut wrong_resolver, wrong_resolver_cap) = setup_wrong_resolver(&mut scenario);
 
@@ -1035,7 +1035,7 @@ fun test_settle_with_wrong_resolver_type_fails() {
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver, // Created with one resolver
         b"TEST_TOPIC",
         b"metadata",
@@ -1088,13 +1088,13 @@ fun test_settle_with_wrong_resolver_type_fails() {
 #[expected_failure(abort_code = query_inner::EInvalidState)]
 fun test_settle_disputed_without_resolution_fails() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1130,7 +1130,7 @@ fun test_settle_disputed_without_resolution_fails() {
 #[expected_failure(abort_code = query_inner::EInvalidState)]
 fun test_settle_with_resolution_but_not_disputed_fails() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (mut resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     // Enable the resolver
@@ -1139,7 +1139,7 @@ fun test_settle_with_resolution_but_not_disputed_fails() {
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1172,7 +1172,7 @@ fun test_settle_with_resolution_but_not_disputed_fails() {
 #[test]
 fun test_create_query_with_maximum_metadata_length() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
@@ -1187,7 +1187,7 @@ fun test_create_query_with_maximum_metadata_length() {
 
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         max_metadata,
@@ -1206,7 +1206,7 @@ fun test_create_query_with_maximum_metadata_length() {
 #[test]
 fun test_create_query_with_timestamp_at_current_time() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let mut clock = clock::create_for_testing(scenario.ctx());
@@ -1215,7 +1215,7 @@ fun test_create_query_with_timestamp_at_current_time() {
 
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1234,7 +1234,7 @@ fun test_create_query_with_timestamp_at_current_time() {
 #[test]
 fun test_propose_too_early_marker_for_timestamp_query() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let mut clock = clock::create_for_testing(scenario.ctx());
@@ -1243,7 +1243,7 @@ fun test_propose_too_early_marker_for_timestamp_query() {
 
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1266,13 +1266,13 @@ fun test_propose_too_early_marker_for_timestamp_query() {
 #[test]
 fun test_propose_unresolvable_marker() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1294,13 +1294,13 @@ fun test_propose_unresolvable_marker() {
 #[test]
 fun test_proposal_expiration_boundary_timing() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let mut clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1334,13 +1334,13 @@ fun test_proposal_expiration_boundary_timing() {
 #[test]
 fun test_multiple_reward_additions() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1380,7 +1380,7 @@ fun test_bond_amount_at_exact_minimum() {
     let clock = clock::create_for_testing(scenario.ctx());
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1399,7 +1399,7 @@ fun test_bond_amount_at_exact_minimum() {
 #[test]
 fun test_complete_workflow_propose_dispute_resolve_settle() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (mut resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     // Enable the resolver
@@ -1408,7 +1408,7 @@ fun test_complete_workflow_propose_dispute_resolve_settle() {
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1457,13 +1457,13 @@ fun test_complete_workflow_propose_dispute_resolve_settle() {
 #[test]
 fun test_expired_proposal_settlement() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let mut clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1501,7 +1501,7 @@ fun test_expired_proposal_settlement() {
 #[test]
 fun test_winner_determination_proposer_wins() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (mut resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     resolver.enable(&protocol_cap);
@@ -1510,7 +1510,7 @@ fun test_winner_determination_proposer_wins() {
     let proposer_address = sender!();
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
@@ -1558,7 +1558,7 @@ fun test_winner_determination_proposer_wins() {
 #[test]
 fun test_test_all_view_functions() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let mut clock = clock::create_for_testing(scenario.ctx());
@@ -1567,7 +1567,7 @@ fun test_test_all_view_functions() {
 
     let query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"test metadata",
@@ -1601,13 +1601,13 @@ fun test_test_all_view_functions() {
 #[test]
 fun test_test_state_transitions() {
     let mut scenario = test_scenario::begin(sender!());
-    let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
     let (mut resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
-        &protocol,
+        &mut protocol,
         &resolver,
         b"TEST_TOPIC",
         b"metadata",
