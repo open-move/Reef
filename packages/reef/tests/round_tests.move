@@ -60,7 +60,7 @@ fun create_round_manager_basic() {
 #[test]
 fun create_round_manager_custom_duration() {
     let mut scenario = test_scenario::begin(sender!());
-    let custom_duration = 24 * 60 * 60 * 1000; // 24 hours
+    let custom_duration = round::min_round_duration_ms!();
     let manager = setup_custom_round_manager(&mut scenario, custom_duration);
 
     // Check custom duration
@@ -104,18 +104,19 @@ fun next_round_creation() {
 #[test]
 fun round_boundaries_calculation() {
     let mut scenario = test_scenario::begin(sender!());
-    let manager = setup_custom_round_manager(&mut scenario, 1000); // 1 second rounds
+    let duration = round::min_round_duration_ms!();
+    let manager = setup_custom_round_manager(&mut scenario, duration);
 
     let (start0, end0) = manager.round_boundaries(0);
     let (start1, end1) = manager.round_boundaries(1);
 
     // Round 0 should start at genesis
     assert!(start0 == manager.genesis_timestamp_ms());
-    assert!(end0 == start0 + 1000);
+    assert!(end0 == start0 + duration);
 
     // Round 1 should start where round 0 ends
     assert!(start1 == end0);
-    assert!(end1 == start1 + 1000);
+    assert!(end1 == start1 + duration);
 
     test_utils::destroy(manager);
     scenario.end();
@@ -124,17 +125,18 @@ fun round_boundaries_calculation() {
 #[test]
 fun round_no_for_timestamp() {
     let mut scenario = test_scenario::begin(sender!());
-    let manager = setup_custom_round_manager(&mut scenario, 1000); // 1 second rounds
+    let duration = round::min_round_duration_ms!();
+    let manager = setup_custom_round_manager(&mut scenario, duration);
 
     let genesis = manager.genesis_timestamp_ms();
 
     // Test various timestamps
     assert!(manager.round_no_for_timestamp(genesis) == 0);
-    assert!(manager.round_no_for_timestamp(genesis + 500) == 0);
-    assert!(manager.round_no_for_timestamp(genesis + 999) == 0);
-    assert!(manager.round_no_for_timestamp(genesis + 1000) == 1);
-    assert!(manager.round_no_for_timestamp(genesis + 1500) == 1);
-    assert!(manager.round_no_for_timestamp(genesis + 2000) == 2);
+    assert!(manager.round_no_for_timestamp(genesis + (duration / 2)) == 0);
+    assert!(manager.round_no_for_timestamp(genesis + duration - 1) == 0);
+    assert!(manager.round_no_for_timestamp(genesis + duration) == 1);
+    assert!(manager.round_no_for_timestamp(genesis + duration + (duration / 2)) == 1);
+    assert!(manager.round_no_for_timestamp(genesis + (2 * duration)) == 2);
 
     test_utils::destroy(manager);
     scenario.end();
@@ -143,12 +145,13 @@ fun round_no_for_timestamp() {
 #[test]
 fun get_round_for_timestamp() {
     let mut scenario = test_scenario::begin(sender!());
-    let mut manager = setup_custom_round_manager(&mut scenario, 1000); // 1 second rounds
+    let duration = round::min_round_duration_ms!();
+    let mut manager = setup_custom_round_manager(&mut scenario, duration);
 
     let genesis = manager.genesis_timestamp_ms();
 
     // Get round for specific timestamp
-    let round = manager.get_round_for_timestamp(genesis + 1500);
+    let round = manager.get_round_for_timestamp(genesis + duration + (duration / 2));
     assert!(round.round_no() == 1);
 
     test_utils::destroy(manager);
@@ -158,7 +161,8 @@ fun get_round_for_timestamp() {
 #[test]
 fun round_view_functions() {
     let mut scenario = test_scenario::begin(sender!());
-    let mut manager = setup_custom_round_manager(&mut scenario, 2000); // 2 second rounds
+    let custom_duration = round::min_round_duration_ms!() * 2;
+    let mut manager = setup_custom_round_manager(&mut scenario, custom_duration);
     let clock = clock::create_for_testing(scenario.ctx());
 
     let round = manager.current_round(&clock);
@@ -169,8 +173,8 @@ fun round_view_functions() {
     let commit_end = round.commit_end_time_ms();
 
     assert!(round.round_no() == 0);
-    assert!(end_time == start_time + 2000);
-    assert!(commit_end == start_time + 1000); // Halfway point
+    assert!(end_time == start_time + custom_duration);
+    assert!(commit_end == start_time + (custom_duration / 2));
 
     test_utils::destroy(manager);
     clock.destroy_for_testing();
@@ -200,7 +204,7 @@ fun timestamp_before_genesis_error() {
     clock.increment_for_testing(1000);
 
     let manager = round::new_round_manager(
-        option::some(1000),
+        option::some(round::min_round_duration_ms!()),
         &clock,
         scenario.ctx(),
     );
@@ -234,18 +238,19 @@ fun storage_not_initialized_by_default() {
 #[test]
 fun round_transition_timing() {
     let mut scenario = test_scenario::begin(sender!());
-    let manager = setup_custom_round_manager(&mut scenario, 1000); // 1 second rounds
+    let duration = round::min_round_duration_ms!();
+    let manager = setup_custom_round_manager(&mut scenario, duration);
     let mut clock = clock::create_for_testing(scenario.ctx());
 
     // Current round should be 0
     assert!(manager.current_round_no(&clock) == 0);
 
     // Advance to next round
-    clock.increment_for_testing(1000);
+    clock.increment_for_testing(duration);
     assert!(manager.current_round_no(&clock) == 1);
 
     // Advance to round 5
-    clock.increment_for_testing(4000);
+    clock.increment_for_testing(4 * duration);
     assert!(manager.current_round_no(&clock) == 5);
 
     test_utils::destroy(manager);
@@ -256,7 +261,8 @@ fun round_transition_timing() {
 #[test]
 fun is_round_active_detection() {
     let mut scenario = test_scenario::begin(sender!());
-    let mut manager = setup_custom_round_manager(&mut scenario, 1000); // 1 second rounds
+    let duration = round::min_round_duration_ms!();
+    let mut manager = setup_custom_round_manager(&mut scenario, duration);
     let mut clock = clock::create_for_testing(scenario.ctx());
 
     // Create round 0
@@ -269,7 +275,7 @@ fun is_round_active_detection() {
     assert!(!manager.is_round_active(1, &clock));
 
     // Advance to round 1
-    clock.increment_for_testing(1000);
+    clock.increment_for_testing(duration);
 
     // Create round 1 so it exists before checking if it's active
     let _round1 = manager.current_round(&clock);
@@ -286,7 +292,8 @@ fun is_round_active_detection() {
 #[test]
 fun round_phase_detection_basic() {
     let mut scenario = test_scenario::begin(sender!());
-    let mut manager = setup_custom_round_manager(&mut scenario, 2000); // 2 second rounds
+    let duration = round::min_round_duration_ms!() * 2;
+    let mut manager = setup_custom_round_manager(&mut scenario, duration);
     let clock = clock::create_for_testing(scenario.ctx());
 
     let round = manager.current_round(&clock);
@@ -303,14 +310,15 @@ fun round_phase_detection_basic() {
 #[test]
 fun sequential_round_creation() {
     let mut scenario = test_scenario::begin(sender!());
-    let mut manager = setup_custom_round_manager(&mut scenario, 1000); // 1 second rounds
+    let duration = round::min_round_duration_ms!();
+    let mut manager = setup_custom_round_manager(&mut scenario, duration);
     let mut clock = clock::create_for_testing(scenario.ctx());
 
     // Create rounds 0-4 sequentially
     let mut i = 0;
     while (i < 5) {
         if (i > 0) {
-            clock.increment_for_testing(1000);
+            clock.increment_for_testing(duration);
         };
         let round = manager.current_round(&clock);
         assert!(round.round_no() == i);
@@ -325,7 +333,8 @@ fun sequential_round_creation() {
 #[test]
 fun round_manager_state_consistency() {
     let mut scenario = test_scenario::begin(sender!());
-    let mut manager = setup_custom_round_manager(&mut scenario, 5000); // 5 second rounds
+    let duration = round::min_round_duration_ms!();
+    let mut manager = setup_custom_round_manager(&mut scenario, duration);
     let clock = clock::create_for_testing(scenario.ctx());
 
     let _start0;
@@ -374,7 +383,7 @@ fun genesis_timestamp_edge_cases() {
     let genesis_time = clock.timestamp_ms();
 
     let manager = round::new_round_manager(
-        option::some(1000),
+        option::some(round::min_round_duration_ms!()),
         &clock,
         scenario.ctx(),
     );
@@ -394,17 +403,18 @@ fun genesis_timestamp_edge_cases() {
 #[test]
 fun timestamp_calculations_precision() {
     let mut scenario = test_scenario::begin(sender!());
-    let manager = setup_custom_round_manager(&mut scenario, 1000); // 1 second rounds
+    let duration = round::min_round_duration_ms!();
+    let manager = setup_custom_round_manager(&mut scenario, duration);
 
     let genesis = manager.genesis_timestamp_ms();
 
     // Test precise boundary calculations
     assert!(manager.round_no_for_timestamp(genesis + 0) == 0);
-    assert!(manager.round_no_for_timestamp(genesis + 999) == 0);
-    assert!(manager.round_no_for_timestamp(genesis + 1000) == 1);
-    assert!(manager.round_no_for_timestamp(genesis + 1001) == 1);
-    assert!(manager.round_no_for_timestamp(genesis + 1999) == 1);
-    assert!(manager.round_no_for_timestamp(genesis + 2000) == 2);
+    assert!(manager.round_no_for_timestamp(genesis + duration - 1) == 0);
+    assert!(manager.round_no_for_timestamp(genesis + duration) == 1);
+    assert!(manager.round_no_for_timestamp(genesis + duration + 1) == 1);
+    assert!(manager.round_no_for_timestamp(genesis + (2 * duration) - 1) == 1);
+    assert!(manager.round_no_for_timestamp(genesis + (2 * duration)) == 2);
 
     test_utils::destroy(manager);
     scenario.end();
@@ -413,7 +423,8 @@ fun timestamp_calculations_precision() {
 #[test]
 fun large_round_numbers() {
     let mut scenario = test_scenario::begin(sender!());
-    let mut manager = setup_custom_round_manager(&mut scenario, 1000); // 1 second rounds
+    let duration = round::min_round_duration_ms!();
+    let mut manager = setup_custom_round_manager(&mut scenario, duration);
     let clock = clock::create_for_testing(scenario.ctx());
 
     // Test large round number
@@ -424,7 +435,7 @@ fun large_round_numbers() {
 
     // Verify boundaries calculation works for large numbers
     let (start, end) = manager.round_boundaries(large_round_no);
-    assert!(end == start + 1000);
+    assert!(end == start + duration);
 
     test_utils::destroy(manager);
     clock.destroy_for_testing();
@@ -433,4 +444,23 @@ fun large_round_numbers() {
 
 macro fun sender(): address {
     @0xBaBe
+}
+
+#[test]
+#[expected_failure(abort_code = round::ERoundDurationTooShort)]
+fun create_round_manager_below_min_duration_fails() {
+    let mut scenario = test_scenario::begin(sender!());
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    // Attempt to create with half the minimum duration.
+    let manager = round::new_round_manager(
+        option::some(round::min_round_duration_ms!() / 2),
+        &clock,
+        scenario.ctx(),
+    );
+
+    test_utils::destroy(manager);
+
+    clock.destroy_for_testing();
+    scenario.end();
 }

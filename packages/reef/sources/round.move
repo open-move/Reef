@@ -16,6 +16,8 @@ const EStorageAlreadyInitialized: u64 = 1;
 const EStorageNotInitialized: u64 = 2;
 /// Thrown when timestamp is before genesis timestamp
 const ETimestampBeforeGenesis: u64 = 3;
+/// Thrown when round duration is below the minimum allowed window
+const ERoundDurationTooShort: u64 = 4;
 
 public struct RoundManager has key, store {
     id: UID,
@@ -50,6 +52,7 @@ public(package) fun new_round_manager(
     ctx: &mut TxContext,
 ): RoundManager {
     let duration_ms = round_duration_ms.destroy_with_default(default_round_duration_ms!());
+    assert!(duration_ms >= min_round_duration_ms!(), ERoundDurationTooShort);
     let genesis_time_ms = clock.timestamp_ms();
 
     let manager = RoundManager {
@@ -247,6 +250,10 @@ public fun round_duration_ms(manager: &RoundManager): u64 {
 
 public macro fun default_round_duration_ms(): u64 {
     48 * 60 * 60 * 1000 // 48 hours in milliseconds
+}
+
+public macro fun min_round_duration_ms(): u64 {
+    24 * 60 * 60 * 1000 // 24 hours in milliseconds
 }
 
 /// Initializes storage for a resolver within this round. Creates a new
