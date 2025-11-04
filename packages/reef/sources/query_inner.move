@@ -1,6 +1,6 @@
 module reef::query_inner;
 
-use reef::protocol;
+use reef::macros;
 use reef::resolver::{Self, Resolution, DisputeTicket};
 use std::type_name::TypeName;
 use sui::balance::{Self, Balance};
@@ -131,7 +131,7 @@ public(package) fun create<T>(
 }
 
 public(package) fun set_liveness_ms<T>(query: &mut QueryInner<T>, liveness_ms: u64) {
-    assert!(liveness_ms >= protocol::min_liveness_ms!(), EInvalidLiveness);
+    assert!(liveness_ms >= macros::min_liveness_ms!(), EInvalidLiveness);
     query.config.liveness_ms = liveness_ms;
 }
 
@@ -213,7 +213,7 @@ public(package) fun dispute_proposal<T>(
     let fee_amount =
         (
             (fee_factor_bps as u128) * (query.bond_amount as u128)
-         / (protocol::bps!() as u128),
+         / (macros::bps!() as u128),
         ) as u64;
 
     let verification_bond_amount = query.balances.bond.value();

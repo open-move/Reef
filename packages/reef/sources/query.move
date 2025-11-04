@@ -1,14 +1,15 @@
 module reef::query;
 
 use reef::callback;
-use reef::protocol::{Self, Protocol};
+use reef::macros;
+use reef::protocol::Protocol;
 use reef::query_inner::{Self, QueryInner, State};
 use reef::resolver::{Resolver, Resolution, DisputeTicket};
 use reef::versioned_object::{Self, VersionedObject};
 use std::type_name;
 use sui::clock::Clock;
 use sui::coin::Coin;
-use sui::derived_object::{Self, claim};
+use sui::derived_object;
 use sui::event;
 
 // ====== Error codes ======
@@ -116,7 +117,7 @@ public fun create<T, CreatorWitness: drop>(
     assert!(protocol.is_topic_supported(topic), EUnsupportedTopic);
     assert!(protocol.is_coin_type_supported<T>(), EUnsupportedCoinType);
     assert!(bond_amount >= protocol.minimum_bond_amount<T>(), EInsufficientBond);
-    assert!(metadata.length() <= max_metadata_length!(), EMetadataTooLong);
+    assert!(metadata.length() <= macros::max_metadata_length!(), EMetadataTooLong);
 
     if (timestamp_ms.is_some()) {
         assert!(*timestamp_ms.borrow() <= clock.timestamp_ms(), ETimestampInFuture);
@@ -179,7 +180,7 @@ public fun set_liveness_ms<T, CreatorWitness: drop>(
     );
 
     let liveness_ms = liveness_ms_maybe.destroy_with_default(protocol.default_liveness_ms());
-    assert!(liveness_ms >= protocol::min_liveness_ms!(), EInvalidLiveness);
+    assert!(liveness_ms >= macros::min_liveness_ms!(), EInvalidLiveness);
     query_inner.set_liveness_ms(liveness_ms)
 }
 
@@ -244,7 +245,7 @@ public fun propose_data<T>(
     // meaningful for timestamp-based queries where data might not yet exist.
     // Event-based queries should provide actual data or "unresolvable".
     assert!(
-        !(query_inner.timestamp_ms().is_none() && data == too_early!()),
+        !(query_inner.timestamp_ms().is_none() && data == macros::too_early!()),
         ECannotProposeTooEarly,
     );
 
@@ -286,7 +287,6 @@ public fun dispute_proposal<T>(
     let query_inner = query.load_inner_mut<T>();
     assert!(query_inner.state(clock) == query_inner::state_proposed(), EInvalidState);
 
-    // Delegate all dispute logic to inner
     let (ticket, disputer, bond_amount, refund_amount) = query_inner.dispute_proposal(
         bond,
         protocol.fee_factor_bps(),
@@ -295,7 +295,6 @@ public fun dispute_proposal<T>(
         ctx,
     );
 
-    // Emit events at outer layer
     if (refund_amount > 0 && query_inner.refund_address().is_some()) {
         event::emit(RewardRefunded { amount: refund_amount, query_id });
     };
@@ -331,7 +330,6 @@ public fun settle<T>(
 
     let query_inner = query.load_inner_mut<T>();
 
-    // Delegate settling logic to inner
     let (winner, total_payout, resolved_data) = query_inner.settle(resolution_maybe, clock, ctx);
 
     event::emit(QuerySettled {
@@ -363,11 +361,8 @@ public fun settle_with_callback<T>(
 
     let query_inner = query.load_inner_mut<T>();
     let creator_witness = query_inner.creator_witness();
-
-    // First settle
     let (winner, total_payout, resolved_data) = query_inner.settle(resolution_maybe, clock, ctx);
 
-    // Emit event
     event::emit(QuerySettled {
         winner,
         total_payout,
@@ -375,7 +370,6 @@ public fun settle_with_callback<T>(
         query_id,
     });
 
-    // Then create callback
     callback::new_query_settled(
         query_id,
         resolved_data,
@@ -511,20 +505,6 @@ public fun state_resolved(): State {
 
 public fun state_settled(): State {
     query_inner::state_settled()
-}
-
-/// Data value representing a too early query proposal
-public macro fun too_early(): vector<u8> {
-    x"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe"
-}
-
-/// Data value representing unresolvable query
-public macro fun unresolvable(): vector<u8> {
-    x"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd"
-}
-
-public macro fun max_metadata_length(): u64 {
-    1024 // Maximum 1KB for metadata
 }
 
 /// Loads the immutable inner query for the current version.

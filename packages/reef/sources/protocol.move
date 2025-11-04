@@ -1,5 +1,6 @@
 module reef::protocol;
 
+use reef::macros;
 use reef::versioned_object::{Self, VersionedObject};
 use std::type_name::{Self, TypeName};
 use sui::derived_object;
@@ -106,9 +107,9 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
         num_queries: 0,
         resolver_fees: table::new(ctx),
         supported_topics: table::new(ctx),
-        fee_factor_bps: default_fee_factor!(),
         supported_coin_types: table::new(ctx),
-        default_liveness_ms: min_liveness_ms!(),
+        fee_factor_bps: macros::default_fee_factor!(),
+        default_liveness_ms: macros::min_liveness_ms!(),
     };
 
     let protocol_cap = ProtocolCap {
@@ -139,7 +140,7 @@ public fun transfer_cap(cap: ProtocolCap, recipient: address) {
 /// @param _cap ProtocolCap for authorization
 /// @param liveness_ms New default liveness in milliseconds (must be >= minimum)
 public fun set_default_liveness_ms(protocol: &mut Protocol, _: &ProtocolCap, liveness_ms: u64) {
-    assert!(liveness_ms >= min_liveness_ms!(), EInvalidLiveness);
+    assert!(liveness_ms >= macros::min_liveness_ms!(), EInvalidLiveness);
     let state = protocol.load_inner_mut();
     let old_ms = state.default_liveness_ms;
     state.default_liveness_ms = liveness_ms;
@@ -155,7 +156,7 @@ public fun set_default_liveness_ms(protocol: &mut Protocol, _: &ProtocolCap, liv
 /// @param _cap ProtocolCap for authorization
 /// @param fee_factor_bps Fee factor (1-10000 basis points, used in minimum bond calculation)
 public fun set_fee_factor_bps(protocol: &mut Protocol, _: &ProtocolCap, fee_factor_bps: u64) {
-    assert!(fee_factor_bps > 0 && fee_factor_bps <= bps!(), EInvalidFeeFactor);
+    assert!(fee_factor_bps > 0 && fee_factor_bps <= macros::bps!(), EInvalidFeeFactor);
     let state = protocol.load_inner_mut();
     let old_bps = state.fee_factor_bps;
     state.fee_factor_bps = fee_factor_bps;
@@ -170,7 +171,7 @@ public fun set_fee_factor_bps(protocol: &mut Protocol, _: &ProtocolCap, fee_fact
 /// @param topic Topic identifier bytes to support
 public fun add_supported_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: vector<u8>) {
     assert!(!topic.is_empty(), EEmptyTopic);
-    assert!(topic.length() <= max_topic_length!(), ETopicTooLong);
+    assert!(topic.length() <= macros::max_topic_length!(), ETopicTooLong);
 
     protocol.load_inner_mut().supported_topics.add(topic, true);
     event::emit(TopicAdded { topic });
@@ -284,7 +285,7 @@ public fun minimum_bond_amount<T>(protocol: &Protocol): u64 {
     assert!(state.resolver_fees.contains(coin_type), EUnsupportedCoinType);
 
     (
-        (state.resolver_fees[coin_type] as u128) * (bps!() as u128) / (state.fee_factor_bps as u128),
+        (state.resolver_fees[coin_type] as u128) * (macros::bps!() as u128) / (state.fee_factor_bps as u128),
     ) as u64
 }
 
@@ -299,14 +300,6 @@ public fun fee_factor_bps(protocol: &Protocol): u64 {
 
 public fun num_queries(protocol: &Protocol): u64 {
     protocol.load_inner().num_queries
-}
-
-public macro fun min_liveness_ms(): u64 {
-    5 * 60 * 1000
-}
-
-public macro fun bps(): u64 {
-    10_000
 }
 
 public(package) fun extend(protocol: &mut Protocol): &mut UID {
@@ -328,15 +321,6 @@ fun load_inner(protocol: &Protocol): &ProtocolInner {
 fun load_inner_mut(protocol: &mut Protocol): &mut ProtocolInner {
     assert!(protocol.inner.version() == PROTOCOL_VERSION, EInvalidProtocolVersion);
     protocol.inner.load_value_mut()
-}
-
-macro fun default_fee_factor(): u64 {
-    5000
-}
-
-
-public macro fun max_topic_length(): u64 {
-    256 // Maximum 256 bytes for a topic
 }
 
 #[test_only]
