@@ -195,14 +195,19 @@ public(package) fun dispute_proposal<T>(
 
     query.balances.bond.join(bond.into_balance());
 
-    let refund_amount = query.balances.reward.value();
+    let mut refund_amount = query.balances.reward.value();
     if (refund_amount > 0) {
-        query.config.refund_address.do_ref!(|refund_address| {
-            transfer::public_transfer(
-                query.balances.reward.withdraw_all().into_coin(ctx),
-                *refund_address,
-            );
-        });
+        if (query.config.refund_address.is_some()) {
+            // Reward refunds are best-effort; only materialize when an address exists.
+            query.config.refund_address.do_ref!(|refund_address| {
+                transfer::public_transfer(
+                    query.balances.reward.withdraw_all().into_coin(ctx),
+                    *refund_address,
+                );
+            });
+        } else {
+            refund_amount = 0;
+        };
     };
 
     let fee_amount =
@@ -376,6 +381,10 @@ public(package) fun refund_address<T>(query: &QueryInner<T>): Option<address> {
     query.config.refund_address
 }
 
+public(package) fun creator_witness<T>(query: &QueryInner<T>): TypeName {
+    query.creator_witness
+}
+
 public(package) fun id<T>(query: &QueryInner<T>): ID {
     query.id.to_inner()
 }
@@ -406,8 +415,4 @@ public fun state_settled(): State {
 
 public fun current_query_version(): u64 {
     CURRENT_QUERY_VERSION
-}
-
-public(package) fun creator_witness<T>(query: &QueryInner<T>): TypeName {
-    query.creator_witness
 }
