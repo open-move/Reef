@@ -8,6 +8,7 @@ use reef::versioned_object::{Self, VersionedObject};
 use std::type_name;
 use sui::clock::Clock;
 use sui::coin::Coin;
+use sui::derived_object::{Self, claim};
 use sui::event;
 
 // ====== Error codes ======
@@ -42,6 +43,8 @@ public struct Query<phantom T> has key, store {
     id: UID,
     inner: VersionedObject,
 }
+
+public struct QueryKey(u64) has copy, drop, store;
 
 // ====== Events ======
 
@@ -100,7 +103,7 @@ public struct QuerySettled has copy, drop {
 /// @return New Query object ready to be shared
 public fun create<T, CreatorWitness: drop>(
     _: CreatorWitness,
-    protocol: &Protocol,
+    protocol: &mut Protocol,
     resolver: &Resolver,
     topic: vector<u8>,
     metadata: vector<u8>,
@@ -119,7 +122,8 @@ public fun create<T, CreatorWitness: drop>(
         assert!(*timestamp_ms.borrow() <= clock.timestamp_ms(), ETimestampInFuture);
     };
 
-    let mut query_uid = object::new(ctx);
+    let query_index = protocol.num_queries();
+    let mut query_uid = derived_object::claim(protocol.extend(), QueryKey(query_index));
 
     let query_state = query_inner::create<T>(
         &mut query_uid,
@@ -145,6 +149,8 @@ public fun create<T, CreatorWitness: drop>(
         creator: ctx.sender(),
         query_id: query.id.to_inner(),
     });
+
+    protocol.increment_num_queries();
 
     query
 }

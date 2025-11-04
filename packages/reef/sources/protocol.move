@@ -18,6 +18,7 @@ public struct ProtocolInnerkey(u64) has copy, drop, store;
 
 public struct ProtocolInner has key, store {
     id: UID,
+    num_queries: u64,
     fee_factor_bps: u64,
     default_liveness_ms: u64,
     resolver_fees: Table<TypeName, u64>,
@@ -30,6 +31,8 @@ public struct ProtocolCap has key {
 }
 
 public struct ProtocolCapKey() has copy, drop, store;
+
+const PROTOCOL_VERSION: u64 = 1;
 
 public struct DefaultLivenessChanged has copy, drop {
     old_ms: u64,
@@ -99,7 +102,8 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
     let mut protocol_uid = object::new(ctx);
 
     let protocol_v1 = ProtocolInner {
-        id: derived_object::claim(&mut protocol_uid, ProtocolInnerkey(current_protocol_version!())),
+        id: derived_object::claim(&mut protocol_uid, ProtocolInnerkey(PROTOCOL_VERSION)),
+        num_queries: 0,
         resolver_fees: table::new(ctx),
         supported_topics: table::new(ctx),
         fee_factor_bps: default_fee_factor!(),
@@ -113,7 +117,7 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
 
     let protocol = Protocol {
         id: protocol_uid,
-        inner: versioned_object::create(current_protocol_version!(), protocol_v1, ctx),
+        inner: versioned_object::create(PROTOCOL_VERSION, protocol_v1, ctx),
     };
 
     publisher.burn();
@@ -293,6 +297,10 @@ public fun fee_factor_bps(protocol: &Protocol): u64 {
     protocol.load_inner().fee_factor_bps
 }
 
+public fun num_queries(protocol: &Protocol): u64 {
+    protocol.load_inner().num_queries
+}
+
 public macro fun min_liveness_ms(): u64 {
     5 * 60 * 1000
 }
@@ -301,15 +309,24 @@ public macro fun bps(): u64 {
     10_000
 }
 
+public(package) fun extend(protocol: &mut Protocol): &mut UID {
+    &mut protocol.id
+}
+
+public(package) fun increment_num_queries(protocol: &mut Protocol) {
+    let inner = protocol.load_inner_mut();
+    inner.num_queries = inner.num_queries + 1;
+}
+
 /// Loads the immutable protocol state for the current version.
 fun load_inner(protocol: &Protocol): &ProtocolInner {
-    assert!(protocol.inner.version() == current_protocol_version!(), EInvalidProtocolVersion);
+    assert!(protocol.inner.version() == PROTOCOL_VERSION, EInvalidProtocolVersion);
     protocol.inner.load_value()
 }
 
 /// Loads the mutable protocol state for the current version.
 fun load_inner_mut(protocol: &mut Protocol): &mut ProtocolInner {
-    assert!(protocol.inner.version() == current_protocol_version!(), EInvalidProtocolVersion);
+    assert!(protocol.inner.version() == PROTOCOL_VERSION, EInvalidProtocolVersion);
     protocol.inner.load_value_mut()
 }
 
@@ -317,9 +334,6 @@ macro fun default_fee_factor(): u64 {
     5000
 }
 
-macro fun current_protocol_version(): u64 {
-    1
-}
 
 public macro fun max_topic_length(): u64 {
     256 // Maximum 256 bytes for a topic
