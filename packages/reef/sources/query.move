@@ -217,7 +217,7 @@ public fun set_refund_address<T, CreatorWitness: drop>(
 public fun add_reward<T>(query: &mut Query<T>, reward: Coin<T>, clock: &Clock) {
     let query_inner = query.load_inner_mut<T>();
     assert!(query_inner.state(clock) == query_inner::state_created(), EInvalidState);
-    query_inner.add_reward(reward)
+    query_inner.add_reward(reward.into_balance())
 }
 
 /// Proposes data for the query with a bond. Transitions query to Proposed state
@@ -250,7 +250,7 @@ public fun propose_data<T>(
     );
 
     let (proposer, bond_amount, expires_at_ms) = query_inner.propose_data(
-        bond,
+        bond.into_balance(),
         data,
         ctx.sender(),
         clock,
@@ -288,7 +288,7 @@ public fun dispute_proposal<T>(
     assert!(query_inner.state(clock) == query_inner::state_proposed(), EInvalidState);
 
     let (ticket, disputer, bond_amount, refund_amount) = query_inner.dispute_proposal(
-        bond,
+        bond.into_balance(),
         protocol.fee_factor_bps(),
         ctx.sender(),
         clock,

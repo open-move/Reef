@@ -5,7 +5,6 @@ use reef::resolver::{Self, Resolution, DisputeTicket};
 use std::type_name::TypeName;
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
-use sui::coin::Coin;
 use sui::derived_object;
 
 // ====== Error codes ======
@@ -142,13 +141,13 @@ public(package) fun set_refund_address<T>(
     query.config.refund_address = refund_address;
 }
 
-public(package) fun add_reward<T>(query: &mut QueryInner<T>, reward: Coin<T>) {
-    query.balances.reward.join(reward.into_balance());
+public(package) fun add_reward<T>(query: &mut QueryInner<T>, reward: Balance<T>) {
+    query.balances.reward.join(reward);
 }
 
 public(package) fun propose_data<T>(
     query: &mut QueryInner<T>,
-    bond: Coin<T>,
+    bond: Balance<T>,
     data: vector<u8>,
     proposer: address,
     clock: &Clock,
@@ -168,14 +167,13 @@ public(package) fun propose_data<T>(
             proposed_at_ms: current_time_ms,
         });
 
-    query.balances.bond.join(bond.into_balance());
-
+    query.balances.bond.join(bond);
     (proposer, bond_amount, expires_at_ms)
 }
 
 public(package) fun dispute_proposal<T>(
     query: &mut QueryInner<T>,
-    bond: Coin<T>,
+    bond: Balance<T>,
     fee_factor_bps: u64,
     disputer: address,
     clock: &Clock,
@@ -193,7 +191,7 @@ public(package) fun dispute_proposal<T>(
             disputed_at_ms,
         });
 
-    query.balances.bond.join(bond.into_balance());
+    query.balances.bond.join(bond);
 
     let mut refund_amount = query.balances.reward.value();
     if (refund_amount > 0) {
