@@ -11,6 +11,7 @@ use sui::coin;
 use sui::package;
 use sui::test_scenario::{Self, Scenario};
 use sui::test_utils;
+use reef::query_inner;
 
 public struct TestCoin() has drop;
 public struct WrongWitness() has drop;
@@ -646,7 +647,7 @@ fun test_dispute_proposal_fails_not_proposed() {
 }
 
 #[test]
-#[expected_failure(abort_code = query::EInvalidState)]
+#[expected_failure(abort_code = query_inner::EInvalidState)]
 fun test_settle_fails_invalid_state() {
     let mut scenario = test_scenario::begin(sender!());
     let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
@@ -673,7 +674,7 @@ fun test_settle_fails_invalid_state() {
 }
 
 #[test]
-#[expected_failure(abort_code = query::EInsufficientBond)]
+#[expected_failure(abort_code = query_inner::EInsufficientBond)]
 fun test_propose_data_fails_insufficient_bond() {
     let mut scenario = test_scenario::begin(sender!());
     let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
@@ -701,7 +702,7 @@ fun test_propose_data_fails_insufficient_bond() {
 }
 
 #[test]
-#[expected_failure(abort_code = query::EInsufficientBond)]
+#[expected_failure(abort_code = query_inner::EInsufficientBond)]
 fun test_dispute_proposal_fails_insufficient_bond() {
     let mut scenario = test_scenario::begin(sender!());
     let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
@@ -834,7 +835,7 @@ fun test_dispute_already_disputed_proposal_fails() {
 }
 
 #[test]
-#[expected_failure(abort_code = query::EInvalidState)]
+#[expected_failure(abort_code = query_inner::EInvalidState)]
 fun test_settle_with_resolution_fails_no_proposal() {
     let mut scenario = test_scenario::begin(sender!());
     let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
@@ -947,7 +948,7 @@ fun test_settle_with_wrong_query_resolution_fails() {
 }
 
 #[test]
-#[expected_failure(abort_code = query::EStaleResolution)]
+#[expected_failure(abort_code = query_inner::EStaleResolution)]
 fun test_settle_with_stale_resolution_fails() {
     let mut scenario = test_scenario::begin(sender!());
     let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
@@ -1021,7 +1022,7 @@ fun setup_wrong_resolver(scenario: &mut Scenario): (Resolver, ResolverCap) {
 }
 
 #[test]
-#[expected_failure(abort_code = query::EWrongResolverType)]
+#[expected_failure(abort_code = query_inner::EWrongResolverType)]
 fun test_settle_with_wrong_resolver_type_fails() {
     let mut scenario = test_scenario::begin(sender!());
     let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
@@ -1084,7 +1085,7 @@ fun test_settle_with_wrong_resolver_type_fails() {
 }
 
 #[test]
-#[expected_failure(abort_code = query::EInvalidState)]
+#[expected_failure(abort_code = query_inner::EInvalidState)]
 fun test_settle_disputed_without_resolution_fails() {
     let mut scenario = test_scenario::begin(sender!());
     let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
@@ -1126,7 +1127,7 @@ fun test_settle_disputed_without_resolution_fails() {
 }
 
 #[test]
-#[expected_failure(abort_code = query::EInvalidState)]
+#[expected_failure(abort_code = query_inner::EInvalidState)]
 fun test_settle_with_resolution_but_not_disputed_fails() {
     let mut scenario = test_scenario::begin(sender!());
     let (protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
