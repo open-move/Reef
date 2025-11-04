@@ -125,7 +125,7 @@ public fun create<T, CreatorWitness: drop>(
     let query_index = protocol.num_queries();
     let mut query_uid = derived_object::claim(protocol.extend(), QueryKey(query_index));
 
-    let query_state = query_inner::create<T>(
+    let query_inner = query_inner::create<T>(
         &mut query_uid,
         resolver.id(),
         protocol.default_liveness_ms(),
@@ -139,7 +139,7 @@ public fun create<T, CreatorWitness: drop>(
 
     let query = Query {
         id: query_uid,
-        inner: versioned_object::create(query_inner::current_query_version(), query_state, ctx),
+        inner: versioned_object::create(query_inner::current_query_version(), query_inner, ctx),
     };
 
     event::emit(QueryCreated<T> {
@@ -171,7 +171,7 @@ public fun set_liveness_ms<T, CreatorWitness: drop>(
     liveness_ms_maybe: Option<u64>,
     clock: &Clock,
 ) {
-    let query_inner = query.load_state_mut<T>();
+    let query_inner = query.load_inner_mut<T>();
     assert!(query_inner.state(clock) == query_inner::state_created(), EInvalidState);
     assert!(
         query_inner.creator_witness() == type_name::with_defining_ids<CreatorWitness>(),
@@ -197,7 +197,7 @@ public fun set_refund_address<T, CreatorWitness: drop>(
     refund_address: Option<address>,
     clock: &Clock,
 ) {
-    let query_inner = query.load_state_mut<T>();
+    let query_inner = query.load_inner_mut<T>();
     assert!(query_inner.state(clock) == query_inner::state_created(), EInvalidState);
     assert!(
         query_inner.creator_witness() == type_name::with_defining_ids<CreatorWitness>(),
@@ -214,7 +214,7 @@ public fun set_refund_address<T, CreatorWitness: drop>(
 /// @param reward Reward coins to incentivize proposals
 /// @param clock System clock for state validation
 public fun add_reward<T>(query: &mut Query<T>, reward: Coin<T>, clock: &Clock) {
-    let query_inner = query.load_state_mut<T>();
+    let query_inner = query.load_inner_mut<T>();
     assert!(query_inner.state(clock) == query_inner::state_created(), EInvalidState);
     query_inner.add_reward(reward)
 }
@@ -237,7 +237,7 @@ public fun propose_data<T>(
     clock: &Clock,
     ctx: &TxContext,
 ) {
-    let query_inner = query.load_state_mut<T>();
+    let query_inner = query.load_inner_mut<T>();
     assert!(query_inner.state(clock) == query_inner::state_created(), EInvalidState);
 
     // For non-timestamp queries, reject "too_early" value as it's only
@@ -283,7 +283,7 @@ public fun dispute_proposal<T>(
     ctx: &mut TxContext,
 ): DisputeTicket<T> {
     let query_id = query.id.to_inner();
-    let query_inner = query.load_state_mut<T>();
+    let query_inner = query.load_inner_mut<T>();
     assert!(query_inner.state(clock) == query_inner::state_proposed(), EInvalidState);
 
     // Delegate all dispute logic to inner
@@ -329,7 +329,7 @@ public fun settle<T>(
     let query_id = query.id.to_inner();
     resolution_maybe.do_ref!(|r| assert!(r.query_id() == query_id, EWrongQueryResolution));
 
-    let query_inner = query.load_state_mut<T>();
+    let query_inner = query.load_inner_mut<T>();
 
     // Delegate settling logic to inner
     let (winner, total_payout, resolved_data) = query_inner.settle(resolution_maybe, clock, ctx);
@@ -361,7 +361,7 @@ public fun settle_with_callback<T>(
     let query_id = query.id.to_inner();
     resolution_maybe.do_ref!(|r| assert!(r.query_id() ==query_id, EWrongQueryResolution));
 
-    let query_inner = query.load_state_mut<T>();
+    let query_inner = query.load_inner_mut<T>();
     let creator_witness = query_inner.creator_witness();
 
     // First settle
@@ -396,7 +396,7 @@ public fun settle_with_callback<T>(
 ///
 /// @return Current State (Created, Proposed, Expired, Disputed, Resolved, or Settled)
 public fun state<T>(query: &Query<T>, clock: &Clock): State {
-    query.load_state<T>().state(clock)
+    query.load_inner<T>().state(clock)
 }
 
 /// Returns the topic identifier for this query.
@@ -405,7 +405,7 @@ public fun state<T>(query: &Query<T>, clock: &Clock): State {
 ///
 /// @return Topic bytes
 public fun topic<T>(query: &Query<T>): vector<u8> {
-    query.load_state<T>().topic()
+    query.load_inner<T>().topic()
 }
 
 /// Returns the metadata associated with this query.
@@ -414,7 +414,7 @@ public fun topic<T>(query: &Query<T>): vector<u8> {
 ///
 /// @return Metadata bytes
 public fun metadata<T>(query: &Query<T>): vector<u8> {
-    query.load_state<T>().metadata()
+    query.load_inner<T>().metadata()
 }
 
 /// Returns the required bond amount for proposals and disputes.
@@ -423,7 +423,7 @@ public fun metadata<T>(query: &Query<T>): vector<u8> {
 ///
 /// @return Bond amount in coin units
 public fun bond_amount<T>(query: &Query<T>): u64 {
-    query.load_state<T>().bond_amount()
+    query.load_inner<T>().bond_amount()
 }
 
 /// Returns the callback object IDs for external integrations.
@@ -432,57 +432,57 @@ public fun bond_amount<T>(query: &Query<T>): u64 {
 ///
 /// @return Vector of object IDs for callbacks
 public fun callback_object_ids<T>(query: &Query<T>): vector<ID> {
-    query.load_state<T>().callback_object_ids()
+    query.load_inner<T>().callback_object_ids()
 }
 
 /// Returns the proposal data if one exists.
 public fun proposal_data<T>(query: &Query<T>): Option<vector<u8>> {
-    query.load_state<T>().proposal_data()
+    query.load_inner<T>().proposal_data()
 }
 
 /// Returns the proposer address if a proposal exists.
 public fun proposer<T>(query: &Query<T>): Option<address> {
-    query.load_state<T>().proposer()
+    query.load_inner<T>().proposer()
 }
 
 /// Returns when the proposal expires (in milliseconds).
 public fun expires_at_ms<T>(query: &Query<T>): Option<u64> {
-    query.load_state<T>().expires_at_ms()
+    query.load_inner<T>().expires_at_ms()
 }
 
 /// Returns the disputer address if the proposal was disputed.
 public fun disputer<T>(query: &Query<T>): Option<address> {
-    query.load_state<T>().disputer()
+    query.load_inner<T>().disputer()
 }
 
 /// Returns when the proposal was disputed (in milliseconds).
 public fun disputed_at_ms<T>(query: &Query<T>): Option<u64> {
-    query.load_state<T>().disputed_at_ms()
+    query.load_inner<T>().disputed_at_ms()
 }
 
 /// Returns the resolved data if the query has been resolved.
 public fun resolved_data<T>(query: &Query<T>): Option<vector<u8>> {
-    query.load_state<T>().resolved_data()
+    query.load_inner<T>().resolved_data()
 }
 
 /// Returns whether the query has been settled.
 public fun is_settled<T>(query: &Query<T>): bool {
-    query.load_state<T>().is_settled()
+    query.load_inner<T>().is_settled()
 }
 
 /// Returns the optional timestamp this query is for.
 public fun timestamp_ms<T>(query: &Query<T>): Option<u64> {
-    query.load_state<T>().timestamp_ms()
+    query.load_inner<T>().timestamp_ms()
 }
 
 /// Returns the liveness period in milliseconds.
 public fun liveness_ms<T>(query: &Query<T>): u64 {
-    query.load_state<T>().liveness_ms()
+    query.load_inner<T>().liveness_ms()
 }
 
 /// Returns the refund address if one is set.
 public fun refund_address<T>(query: &Query<T>): Option<address> {
-    query.load_state<T>().refund_address()
+    query.load_inner<T>().refund_address()
 }
 
 public fun id<T>(query: &Query<T>): ID {
@@ -528,13 +528,13 @@ public macro fun max_metadata_length(): u64 {
 }
 
 /// Loads the immutable query state for the current version.
-fun load_state<T>(query: &Query<T>): &QueryInner<T> {
+fun load_inner<T>(query: &Query<T>): &QueryInner<T> {
     assert!(query.inner.version() == query_inner::current_query_version(), EInvalidQueryVersion);
     query.inner.load_value()
 }
 
 /// Loads the mutable query state for the current version.
-fun load_state_mut<T>(query: &mut Query<T>): &mut QueryInner<T> {
+fun load_inner_mut<T>(query: &mut Query<T>): &mut QueryInner<T> {
     assert!(query.inner.version() == query_inner::current_query_version(), EInvalidQueryVersion);
     query.inner.load_value_mut()
 }
