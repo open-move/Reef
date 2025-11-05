@@ -47,8 +47,8 @@ fun test_create_basic_query() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200), // Above minimum bond
         vector::empty(),
-        200, // Above minimum bond
         &clock,
         scenario.ctx(),
     );
@@ -78,11 +78,12 @@ fun test_create_query_with_timestamp() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
-        1, // schema version
+        1,
+        // schema version
         b"",
         option::some(timestamp_ms),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -106,8 +107,8 @@ fun test_propose_data_basic() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -138,8 +139,8 @@ fun test_add_reward() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -165,8 +166,8 @@ fun test_set_liveness() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -198,8 +199,8 @@ fun test_dispute_proposal() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -243,8 +244,8 @@ fun test_create_query_fails_unsupported_topic() {
         1, // schema version (will fail since not registered)
         b"",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -269,8 +270,8 @@ fun test_create_query_fails_insufficient_bond() {
         1, // schema version
         b"",
         option::none<u64>(),
+        option::some(50), // Too low
         vector::empty(),
-        50, // Too low
         &clock,
         scenario.ctx(),
     );
@@ -294,8 +295,8 @@ fun test_create_query_fails_invalid_liveness() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -330,8 +331,8 @@ fun test_create_query_fails_timestamp_in_future() {
         1, // schema version
         b"metadata",
         option::some(current_time + 1000), // Future timestamp
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -355,8 +356,8 @@ fun test_propose_data_fails_too_early_for_non_timestamp_query() {
         1, // schema version
         b"metadata",
         option::none<u64>(), // Non-timestamp query
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -394,8 +395,8 @@ fun test_create_query_fails_metadata_too_long() {
         1, // schema version
         long_metadata,
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -423,8 +424,8 @@ fun test_create_query_fails_unsupported_coin_type() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -448,8 +449,8 @@ fun test_set_liveness_fails_wrong_witness() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -481,8 +482,8 @@ fun test_set_refund_address_fails_wrong_witness() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -513,8 +514,8 @@ fun test_propose_data_fails_already_proposed() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -546,8 +547,8 @@ fun test_add_reward_fails_after_proposal() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -579,8 +580,8 @@ fun test_set_liveness_fails_after_proposal() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -616,8 +617,8 @@ fun test_set_refund_address_fails_after_proposal() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -652,8 +653,8 @@ fun test_dispute_proposal_fails_not_proposed() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -688,8 +689,8 @@ fun test_settle_fails_invalid_state() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -716,8 +717,8 @@ fun test_propose_data_fails_insufficient_bond() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200), // Requires 200 bond
         vector::empty(),
-        200, // Requires 200 bond
         &clock,
         scenario.ctx(),
     );
@@ -745,8 +746,8 @@ fun test_dispute_proposal_fails_insufficient_bond() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200), // Requires 200 bond
         vector::empty(),
-        200, // Requires 200 bond
         &clock,
         scenario.ctx(),
     );
@@ -785,8 +786,8 @@ fun test_dispute_expired_proposal_fails() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -828,8 +829,8 @@ fun test_dispute_already_disputed_proposal_fails() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -884,8 +885,8 @@ fun test_settle_with_resolution_fails_no_proposal() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -924,8 +925,8 @@ fun test_settle_with_wrong_query_resolution_fails() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -938,8 +939,8 @@ fun test_settle_with_wrong_query_resolution_fails() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1000,8 +1001,8 @@ fun test_settle_with_stale_resolution_fails() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1071,13 +1072,14 @@ fun test_settle_with_wrong_resolver_type_fails() {
     let mut query = query::create<TestCoin, _>(
         CreatorWitness(),
         &mut protocol,
-        &resolver, // Created with one resolver
+        &resolver,
+        // Created with one resolver
         b"TEST_TOPIC",
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1136,8 +1138,8 @@ fun test_settle_disputed_without_resolution_fails() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1182,8 +1184,8 @@ fun test_settle_with_resolution_but_not_disputed_fails() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1231,8 +1233,8 @@ fun test_create_query_with_maximum_metadata_length() {
         1, // schema version
         max_metadata,
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1260,8 +1262,8 @@ fun test_create_query_with_timestamp_at_current_time() {
         1, // schema version
         b"metadata",
         option::some(current_time), // Exactly at current time
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1289,8 +1291,8 @@ fun test_propose_too_early_marker_for_timestamp_query() {
         1, // schema version
         b"metadata",
         option::some(current_time), // Timestamp query
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1319,8 +1321,8 @@ fun test_propose_unresolvable_marker() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1348,8 +1350,8 @@ fun test_proposal_expiration_boundary_timing() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1389,8 +1391,8 @@ fun test_multiple_reward_additions() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1407,6 +1409,36 @@ fun test_multiple_reward_additions() {
 
     // Total rewards should be accumulated (though we can't directly check internal balance)
     // The fact that all calls succeed proves the accumulation works
+
+    cleanup(query, resolver, resolver_cap, protocol, protocol_cap, clock, scenario)
+}
+
+#[test]
+fun test_create_query_with_default_bond() {
+    let mut scenario = test_scenario::begin(sender!());
+    let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
+    let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
+
+    let clock = clock::create_for_testing(scenario.ctx());
+    
+    // Create query with option::none() to use protocol's minimum bond
+    let query = query::create<TestCoin, _>(
+        CreatorWitness(),
+        &mut protocol,
+        &resolver,
+        b"TEST_TOPIC",
+        1, // schema version
+        b"metadata",
+        option::none<u64>(),
+        option::none(), // Use protocol's minimum bond amount
+        vector::empty(),
+        &clock,
+        scenario.ctx(),
+    );
+
+    // Verify bond amount equals the protocol's minimum
+    let expected_min_bond = protocol.minimum_bond_amount<TestCoin>();
+    assert!(query.bond_amount() == expected_min_bond);
 
     cleanup(query, resolver, resolver_cap, protocol, protocol_cap, clock, scenario)
 }
@@ -1430,8 +1462,8 @@ fun test_bond_amount_at_exact_minimum() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(minimum_bond_amount), // Exactly at minimum
         vector::empty(),
-        minimum_bond_amount, // Exactly at minimum
         &clock,
         scenario.ctx(),
     );
@@ -1459,8 +1491,8 @@ fun test_complete_workflow_propose_dispute_resolve_settle() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1515,8 +1547,8 @@ fun test_expired_proposal_settlement() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1563,8 +1595,8 @@ fun test_winner_determination_proposer_wins() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );
@@ -1621,8 +1653,8 @@ fun test_test_all_view_functions() {
         1, // schema version
         b"test metadata",
         option::some(timestamp),
+        option::some(300), // Bond amount
         vector[object::id_from_address(@0xCA11BAC)],
-        300, // Bond amount
         &clock,
         scenario.ctx(),
     );
@@ -1662,8 +1694,8 @@ fun test_test_state_transitions() {
         1, // schema version
         b"metadata",
         option::none<u64>(),
+        option::some(200),
         vector::empty(),
-        200,
         &clock,
         scenario.ctx(),
     );

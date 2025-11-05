@@ -113,14 +113,17 @@ public fun create_with_schema<T, CreatorWitness: drop>(
     topic: vector<u8>,
     metadata: vector<u8>,
     timestamp_ms: Option<u64>,
+    bond_amount_maybe: Option<u64>,
     callback_object_ids: vector<ID>,
-    bond_amount: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Query<T> {
     assert!(protocol.is_coin_type_supported<T>(), EUnsupportedCoinType);
-    assert!(bond_amount >= protocol.minimum_bond_amount<T>(), EInsufficientBond);
     assert!(metadata.length() <= macros::max_metadata_length!(), EMetadataTooLong);
+
+    let min_bond_amount = protocol.minimum_bond_amount<T>();
+    let bond_amount = bond_amount_maybe.destroy_with_default(min_bond_amount);
+    assert!(bond_amount >= min_bond_amount, EInsufficientBond);
 
     if (timestamp_ms.is_some()) {
         assert!(*timestamp_ms.borrow() <= clock.timestamp_ms(), ETimestampInFuture);
@@ -185,8 +188,8 @@ public fun create<T, CreatorWitness: drop>(
     schema_version: u64,
     metadata: vector<u8>,
     timestamp_ms: Option<u64>,
+    bond_amount_maybe: Option<u64>,
     callback_object_ids: vector<ID>,
-    bond_amount: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Query<T> {
@@ -201,8 +204,8 @@ public fun create<T, CreatorWitness: drop>(
         topic,
         metadata,
         timestamp_ms,
+        bond_amount_maybe,
         callback_object_ids,
-        bond_amount,
         clock,
         ctx,
     )
