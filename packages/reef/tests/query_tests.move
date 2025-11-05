@@ -6,6 +6,7 @@ use reef::protocol_tests;
 use reef::query::{Self, Query};
 use reef::resolver::{Self, Resolver, ResolverCap};
 use reef::resolver_tests;
+use reef::schema;
 use sui::clock::{Self, Clock};
 use sui::coin;
 use sui::package;
@@ -23,7 +24,10 @@ fun setup_protocol_with_test_coin(scenario: &mut Scenario): (Protocol, ProtocolC
 
     protocol.add_supported_coin_type<TestCoin>(&protocol_cap);
     protocol.set_resolver_fee<TestCoin>(&protocol_cap, 100);
-    protocol.add_supported_topic(&protocol_cap, b"TEST_TOPIC");
+    
+    // Register schema for TEST_TOPIC - using Raw to accept any bytes
+    let schema = schema::new_blob_schema(schema::data_type_raw());
+    protocol.set_topic_schema(&protocol_cap, b"TEST_TOPIC", schema);
 
     (protocol, protocol_cap)
 }
@@ -40,6 +44,7 @@ fun test_create_basic_query() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -73,6 +78,7 @@ fun test_create_query_with_timestamp() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"",
         option::some(timestamp_ms),
         vector::empty(),
@@ -97,6 +103,7 @@ fun test_propose_data_basic() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -128,6 +135,7 @@ fun test_add_reward() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -154,6 +162,7 @@ fun test_set_liveness() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -186,6 +195,7 @@ fun test_dispute_proposal() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -218,7 +228,7 @@ fun test_dispute_proposal() {
 }
 
 #[test]
-#[expected_failure(abort_code = query::EUnsupportedTopic)]
+#[expected_failure(abort_code = query::ETopicSchemaNotFound)]
 fun test_create_query_fails_unsupported_topic() {
     let mut scenario = test_scenario::begin(sender!());
     let (mut protocol, protocol_cap) = setup_protocol_with_test_coin(&mut scenario);
@@ -230,6 +240,7 @@ fun test_create_query_fails_unsupported_topic() {
         &mut protocol,
         &resolver,
         b"UNSUPPORTED_TOPIC",
+        1, // schema version (will fail since not registered)
         b"",
         option::none<u64>(),
         vector::empty(),
@@ -255,6 +266,7 @@ fun test_create_query_fails_insufficient_bond() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"",
         option::none<u64>(),
         vector::empty(),
@@ -279,6 +291,7 @@ fun test_create_query_fails_invalid_liveness() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -314,6 +327,7 @@ fun test_create_query_fails_timestamp_in_future() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::some(current_time + 1000), // Future timestamp
         vector::empty(),
@@ -338,6 +352,7 @@ fun test_propose_data_fails_too_early_for_non_timestamp_query() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(), // Non-timestamp query
         vector::empty(),
@@ -376,6 +391,7 @@ fun test_create_query_fails_metadata_too_long() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         long_metadata,
         option::none<u64>(),
         vector::empty(),
@@ -395,7 +411,8 @@ fun test_create_query_fails_unsupported_coin_type() {
     let (resolver, resolver_cap) = resolver_tests::setup_resolver(&mut scenario);
 
     // Don't add TestCoin as supported - it will be unsupported
-    protocol.add_supported_topic(&protocol_cap, b"TEST_TOPIC");
+    let schema = schema::new_blob_schema(schema::data_type_raw());
+    protocol.set_topic_schema(&protocol_cap, b"TEST_TOPIC", schema);
 
     let clock = clock::create_for_testing(scenario.ctx());
     let query = query::create<TestCoin, _>(
@@ -403,6 +420,7 @@ fun test_create_query_fails_unsupported_coin_type() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -427,6 +445,7 @@ fun test_set_liveness_fails_wrong_witness() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -459,6 +478,7 @@ fun test_set_refund_address_fails_wrong_witness() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -490,6 +510,7 @@ fun test_propose_data_fails_already_proposed() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -522,6 +543,7 @@ fun test_add_reward_fails_after_proposal() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -554,6 +576,7 @@ fun test_set_liveness_fails_after_proposal() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -590,6 +613,7 @@ fun test_set_refund_address_fails_after_proposal() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -625,6 +649,7 @@ fun test_dispute_proposal_fails_not_proposed() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -660,6 +685,7 @@ fun test_settle_fails_invalid_state() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -687,6 +713,7 @@ fun test_propose_data_fails_insufficient_bond() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -715,6 +742,7 @@ fun test_dispute_proposal_fails_insufficient_bond() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -754,6 +782,7 @@ fun test_dispute_expired_proposal_fails() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -796,6 +825,7 @@ fun test_dispute_already_disputed_proposal_fails() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -851,6 +881,7 @@ fun test_settle_with_resolution_fails_no_proposal() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -890,6 +921,7 @@ fun test_settle_with_wrong_query_resolution_fails() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -903,6 +935,7 @@ fun test_settle_with_wrong_query_resolution_fails() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -964,6 +997,7 @@ fun test_settle_with_stale_resolution_fails() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1039,6 +1073,7 @@ fun test_settle_with_wrong_resolver_type_fails() {
         &mut protocol,
         &resolver, // Created with one resolver
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1098,6 +1133,7 @@ fun test_settle_disputed_without_resolution_fails() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1143,6 +1179,7 @@ fun test_settle_with_resolution_but_not_disputed_fails() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1191,6 +1228,7 @@ fun test_create_query_with_maximum_metadata_length() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         max_metadata,
         option::none<u64>(),
         vector::empty(),
@@ -1219,6 +1257,7 @@ fun test_create_query_with_timestamp_at_current_time() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::some(current_time), // Exactly at current time
         vector::empty(),
@@ -1247,6 +1286,7 @@ fun test_propose_too_early_marker_for_timestamp_query() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::some(current_time), // Timestamp query
         vector::empty(),
@@ -1276,6 +1316,7 @@ fun test_propose_unresolvable_marker() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1304,6 +1345,7 @@ fun test_proposal_expiration_boundary_timing() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1344,6 +1386,7 @@ fun test_multiple_reward_additions() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1384,6 +1427,7 @@ fun test_bond_amount_at_exact_minimum() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1412,6 +1456,7 @@ fun test_complete_workflow_propose_dispute_resolve_settle() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1467,6 +1512,7 @@ fun test_expired_proposal_settlement() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1514,6 +1560,7 @@ fun test_winner_determination_proposer_wins() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),
@@ -1571,6 +1618,7 @@ fun test_test_all_view_functions() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"test metadata",
         option::some(timestamp),
         vector[object::id_from_address(@0xCA11BAC)],
@@ -1611,6 +1659,7 @@ fun test_test_state_transitions() {
         &mut protocol,
         &resolver,
         b"TEST_TOPIC",
+        1, // schema version
         b"metadata",
         option::none<u64>(),
         vector::empty(),

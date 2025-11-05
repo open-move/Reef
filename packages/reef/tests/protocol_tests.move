@@ -2,6 +2,7 @@
 module reef::protocol_tests;
 
 use reef::protocol::{Self, Protocol, ProtocolCap};
+use reef::schema;
 use sui::package::Publisher;
 use sui::test_scenario::{Self, Scenario};
 use sui::test_utils;
@@ -40,13 +41,14 @@ fun test_set_custom_fee_factor() {
 }
 
 #[test]
-fun test_add_supported_topic() {
+fun test_set_topic_schema() {
     let mut scenario = test_scenario::begin(sender!());
     let (mut protocol, protocol_cap) = setup_protocol(&mut scenario);
 
     let topic = b"ETH_USDC";
-    protocol.add_supported_topic(&protocol_cap, topic);
-    assert!(protocol.is_topic_supported(topic));
+    let schema = schema::new_blob_schema(schema::data_type_u64());
+    protocol.set_topic_schema(&protocol_cap, topic, schema);
+    assert!(protocol.has_topic_schema(topic, 1));
     cleanup(protocol, protocol_cap, scenario)
 }
 
