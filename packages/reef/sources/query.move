@@ -3,9 +3,9 @@ module reef::query;
 use reef::callback;
 use reef::macros;
 use reef::protocol::Protocol;
-use reef::query_inner::{Self, QueryInner, State};
+use reef::query_inner::{Self, QueryInner, State, Schema};
 use reef::resolver::{Resolver, Resolution, DisputeTicket};
-use reef::schema;
+use reef::schema::{Self, Schema as BaseSchema};
 use reef::versioned_object::{Self, VersionedObject};
 use std::type_name;
 use sui::clock::Clock;
@@ -433,6 +433,10 @@ public fun settle_with_callback<T>(
         resolved_data,
         creator_witness,
     )
+}
+
+public fun new_custom_schema(inner: BaseSchema): Schema {
+    query_inner::new_custom_schema(inner)
 }
 
 // These functions are now handled entirely in query_inner.move
