@@ -5,6 +5,7 @@ use reef::protocol::{Self, Protocol, ProtocolCap};
 use sui::package::Publisher;
 use sui::test_scenario::{Self, Scenario};
 use sui::test_utils;
+use reef::macros;
 
 public struct DummyCoin() has drop;
 
@@ -78,7 +79,7 @@ fun test_minimum_bond() {
     protocol.add_supported_coin_type<DummyCoin>(&protocol_cap);
     protocol.set_resolver_fee<DummyCoin>(&protocol_cap, resolver_fee!());
 
-    let expected_bond = (resolver_fee!() * protocol::bps!()) / protocol.fee_factor_bps();
+    let expected_bond = (resolver_fee!() * macros::bps!()) / protocol.fee_factor_bps();
     assert!(protocol.minimum_bond_amount<DummyCoin>() == expected_bond);
     cleanup(protocol, protocol_cap, scenario)
 }

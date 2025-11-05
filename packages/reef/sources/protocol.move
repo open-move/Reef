@@ -1,6 +1,7 @@
 module reef::protocol;
 
 use reef::macros;
+use reef::schema::{Self, Schema, SchemaRef};
 use reef::versioned_object::{Self, VersionedObject};
 use std::type_name::{Self, TypeName};
 use sui::derived_object;
@@ -23,7 +24,7 @@ public struct ProtocolInner has key, store {
     fee_factor_bps: u64,
     default_liveness_ms: u64,
     resolver_fees: Table<TypeName, u64>,
-    supported_topics: Table<vector<u8>, bool>,
+    topic_schemas: Table<SchemaRef, Schema>,
     supported_coin_types: Table<TypeName, bool>,
 }
 
@@ -54,20 +55,22 @@ public struct ResolverFeeRemoved has copy, drop {
     coin_type: TypeName,
 }
 
-public struct TopicAdded has copy, drop {
-    topic: vector<u8>,
-}
-
-public struct TopicRemoved has copy, drop {
-    topic: vector<u8>,
-}
-
 public struct CoinTypeAdded has copy, drop {
     coin_type: TypeName,
 }
 
 public struct CoinTypeRemoved has copy, drop {
     coin_type: TypeName,
+}
+
+public struct TopicSchemaSet has copy, drop {
+    version: u64,
+    topic: vector<u8>,
+}
+
+public struct TopicSchemaRemoved has copy, drop {
+    version: u64,
+    topic: vector<u8>,
 }
 
 /// Thrown when liveness period is below minimum required
@@ -84,6 +87,8 @@ const EEmptyTopic: u64 = 4;
 const ETopicTooLong: u64 = 5;
 /// Thrown when protocol version is invalid
 const EInvalidProtocolVersion: u64 = 6;
+/// Thrown when schema does not exist for topic
+const ESchemaNotFound: u64 = 7;
 
 fun init(otw: PROTOCOL, ctx: &mut TxContext) {
     package::claim_and_keep(otw, ctx);
@@ -106,7 +111,7 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
         id: derived_object::claim(&mut protocol_uid, ProtocolInnerkey(PROTOCOL_VERSION)),
         num_queries: 0,
         resolver_fees: table::new(ctx),
-        supported_topics: table::new(ctx),
+        topic_schemas: table::new(ctx),
         supported_coin_types: table::new(ctx),
         fee_factor_bps: macros::default_fee_factor!(),
         default_liveness_ms: macros::min_liveness_ms!(),
@@ -162,29 +167,6 @@ public fun set_fee_factor_bps(protocol: &mut Protocol, _: &ProtocolCap, fee_fact
     state.fee_factor_bps = fee_factor_bps;
 
     event::emit(FeeFactorChanged { old_bps, new_bps: fee_factor_bps });
-}
-
-/// Adds a topic to the list of supported query topics.
-///
-/// @param protocol Protocol object
-/// @param _cap ProtocolCap for authorization
-/// @param topic Topic identifier bytes to support
-public fun add_supported_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: vector<u8>) {
-    assert!(!topic.is_empty(), EEmptyTopic);
-    assert!(topic.length() <= macros::max_topic_length!(), ETopicTooLong);
-
-    protocol.load_inner_mut().supported_topics.add(topic, true);
-    event::emit(TopicAdded { topic });
-}
-
-/// Removes a topic from the list of supported query topics.
-///
-/// @param protocol Protocol object
-/// @param _cap ProtocolCap for authorization
-/// @param topic Topic identifier bytes to remove
-public fun remove_supported_topic(protocol: &mut Protocol, _: &ProtocolCap, topic: vector<u8>) {
-    protocol.load_inner_mut().supported_topics.remove(topic);
-    event::emit(TopicRemoved { topic });
 }
 
 /// Adds a coin type to the list of supported currencies for bonds.
@@ -253,16 +235,6 @@ public fun is_coin_type_supported<T>(protocol: &Protocol): bool {
     protocol.load_inner().supported_coin_types.contains(type_name::with_defining_ids<T>())
 }
 
-/// Checks if a topic is supported for queries.
-///
-/// @param protocol Protocol to check
-/// @param topic Topic identifier bytes
-///
-/// @return true if topic is supported
-public fun is_topic_supported(protocol: &Protocol, topic: vector<u8>): bool {
-    protocol.load_inner().supported_topics.contains(topic)
-}
-
 /// Returns the default liveness period in milliseconds.
 ///
 /// @param protocol Protocol object
@@ -302,6 +274,76 @@ public fun num_queries(protocol: &Protocol): u64 {
     protocol.load_inner().num_queries
 }
 
+/// Registers a schema for a topic. Standard schemas enable proposal validation.
+///
+/// @param protocol Protocol object
+/// @param _cap ProtocolCap for authorization
+/// @param topic Topic identifier that the schema applies to
+/// @param schema Schema definition for validation
+public fun set_topic_schema(
+    protocol: &mut Protocol,
+    _: &ProtocolCap,
+    topic: vector<u8>,
+    version: u64,
+    schema: Schema,
+) {
+    assert!(!topic.is_empty(), EEmptyTopic);
+    assert!(topic.length() <= macros::max_topic_length!(), ETopicTooLong);
+
+    let state = protocol.load_inner_mut();
+    let schema_ref = schema::new_schema_ref(topic, version);
+    if (state.topic_schemas.contains(schema_ref)) {
+        state.topic_schemas.remove(schema_ref);
+    };
+
+    state.topic_schemas.add(schema_ref, schema);
+    event::emit(TopicSchemaSet { topic, version });
+}
+
+/// Removes a registered schema for a topic.
+///
+/// @param protocol Protocol object
+/// @param _cap ProtocolCap for authorization
+/// @param topic Topic to remove schema for
+public fun remove_topic_schema(
+    protocol: &mut Protocol,
+    _: &ProtocolCap,
+    topic: vector<u8>,
+    version: u64,
+) {
+    let state = protocol.load_inner_mut();
+    let schema_ref = schema::new_schema_ref(topic, version);
+
+    assert!(state.topic_schemas.contains(schema_ref), ESchemaNotFound);
+
+    state.topic_schemas.remove(schema_ref);
+    event::emit(TopicSchemaRemoved { topic, version });
+}
+
+/// Gets a registered schema for a topic.
+///
+/// @param protocol Protocol object
+/// @param topic Topic to get schema for
+///
+/// @return Schema for the topic
+public fun topic_schema(protocol: &Protocol, topic: vector<u8>, version: u64): &Schema {
+    let state = protocol.load_inner();
+    let schema_ref = schema::new_schema_ref(topic, version);
+
+    assert!(state.topic_schemas.contains(schema_ref), ESchemaNotFound);
+    &state.topic_schemas[schema_ref]
+}
+
+/// Checks if a schema is registered for a topic.
+///
+/// @param protocol Protocol object
+/// @param topic Topic to check
+///
+/// @return true if schema exists for topic
+public fun has_topic_schema(protocol: &Protocol, topic: vector<u8>, version: u64): bool {
+    protocol.load_inner().topic_schemas.contains(schema::new_schema_ref(topic, version))
+}
+
 public(package) fun extend(protocol: &mut Protocol): &mut UID {
     &mut protocol.id
 }
@@ -326,4 +368,9 @@ fun load_inner_mut(protocol: &mut Protocol): &mut ProtocolInner {
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {
     package::claim_and_keep(PROTOCOL(), ctx);
+}
+
+#[test_only]
+public fun load_inner_for_testing(protocol: &Protocol): &ProtocolInner {
+    protocol.load_inner()
 }

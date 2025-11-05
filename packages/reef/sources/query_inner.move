@@ -2,6 +2,7 @@ module reef::query_inner;
 
 use reef::macros;
 use reef::resolver::{Self, Resolution, DisputeTicket};
+use reef::schema::Schema as BaseSchema;
 use std::type_name::TypeName;
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
@@ -36,9 +37,11 @@ public struct QueryInner<phantom T> has key, store {
     bond_amount: u64,
     /// Bytes describing the oracle topic (e.g., market identifier).
     topic: vector<u8>,
+    /// Schema defining data structure and validation rules.
+    schema: Schema,
     /// Query config such as liveness window and refund address.
     config: Config,
-    /// Small arbitrary metadata providrf at creation to contextualize the query offchain.
+    /// Small arbitrary metadata provided at creation to contextualize the query offchain.
     metadata: vector<u8>,
     balances: Balances<T>,
     dispute: Option<Dispute>,
@@ -90,6 +93,11 @@ public enum State has copy, drop, store {
     Settled,
 }
 
+public enum Schema has copy, drop, store {
+    Standard(BaseSchema, u64),
+    Custom(BaseSchema),
+}
+
 public struct QueryKey(u64) has copy, drop, store;
 
 const CURRENT_QUERY_VERSION: u64 = 1;
@@ -97,9 +105,10 @@ const CURRENT_QUERY_VERSION: u64 = 1;
 public(package) fun create<T>(
     parent: &mut UID,
     resolver_id: ID,
-    liveness_ms: u64,
+    schema: Schema,
     topic: vector<u8>,
     metadata: vector<u8>,
+    liveness_ms: u64,
     timestamp_ms: Option<u64>,
     callback_object_ids: vector<ID>,
     creator_witness: TypeName,
@@ -108,6 +117,7 @@ public(package) fun create<T>(
     QueryInner {
         id: derived_object::claim(parent, QueryKey(CURRENT_QUERY_VERSION)),
         topic,
+        schema,
         metadata,
         bond_amount,
         resolver_id,
@@ -260,6 +270,14 @@ public(package) fun settle<T>(
     (winner, total_payout, *query.resolved_data.borrow())
 }
 
+public(package) fun new_standard_schema(inner: BaseSchema, version: u64): Schema {
+    Schema::Standard(inner, version)
+}
+
+public(package) fun new_custom_schema(inner: BaseSchema): Schema {
+    Schema::Custom(inner)
+}
+
 fun apply_resolution<T>(query: &mut QueryInner<T>, resolution: Resolution) {
     assert!(query.proposal.is_some() && query.dispute.is_some(), EDataNotProposed);
 
@@ -305,6 +323,13 @@ public(package) fun state<T>(query: &QueryInner<T>, clock: &Clock): State {
 
 public(package) fun topic<T>(query: &QueryInner<T>): vector<u8> {
     query.topic
+}
+
+public(package) fun schema<T>(query: &QueryInner<T>): &BaseSchema {
+    match (&query.schema) {
+        Schema::Standard(schema, _) => schema,
+        Schema::Custom(schema) => schema,
+    }
 }
 
 public(package) fun metadata<T>(query: &QueryInner<T>): vector<u8> {

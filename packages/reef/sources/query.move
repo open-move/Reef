@@ -3,8 +3,9 @@ module reef::query;
 use reef::callback;
 use reef::macros;
 use reef::protocol::Protocol;
-use reef::query_inner::{Self, QueryInner, State};
+use reef::query_inner::{Self, QueryInner, State, Schema};
 use reef::resolver::{Resolver, Resolution, DisputeTicket};
+use reef::schema::Schema as BaseSchema;
 use reef::versioned_object::{Self, VersionedObject};
 use std::type_name;
 use sui::clock::Clock;
@@ -16,8 +17,7 @@ use sui::event;
 
 /// Thrown when liveness period is below minimum required
 const EInvalidLiveness: u64 = 1;
-/// Thrown when query topic is not supported by protocol
-const EUnsupportedTopic: u64 = 2;
+const ETopicSchemaNotFound: u64 = 2;
 /// Thrown when coin type is not supported by protocol
 const EUnsupportedCoinType: u64 = 3;
 /// Thrown when query operation is not valid for current state
@@ -36,6 +36,8 @@ const EInvalidCreatorWitness: u64 = 10;
 const EInvalidQueryVersion: u64 = 11;
 /// Thrown when resolution query ID doesn't match the query being settled
 const EWrongQueryResolution: u64 = 12;
+/// Thrown when proposal data doesn't match schema
+const EInvalidProposalData: u64 = 13;
 
 /// Optimistic oracle request. Tracks the lifecycle from creation to
 /// settlement, including bonds, proposals, disputes, and callbacks for a given
@@ -86,14 +88,14 @@ public struct QuerySettled has copy, drop {
     total_payout: u64,
 }
 
-/// Creates a new query with specified parameters. The query starts in Created state
+/// Creates a new query with specified schema. The query starts in Created state
 /// and validates all inputs against protocol constraints. Creator witness provides
 /// authentication and determines callback authorization.
 ///
 /// @param _witness Creator witness for authentication (consumed)
 /// @param protocol Protocol instance for validation
 /// @param resolver Resolver instance for dispute resolution
-/// @param topic Topic identifier (must be protocol-supported)
+/// @param schema Schema defining data structure and validation
 /// @param metadata Optional metadata bytes
 /// @param timestamp_ms Optional timestamp for historical queries (must not be future)
 /// @param callback_object_ids vector of object ids for callback integration
@@ -102,10 +104,11 @@ public struct QuerySettled has copy, drop {
 /// @param ctx Transaction context
 ///
 /// @return New Query object ready to be shared
-public fun create<T, CreatorWitness: drop>(
+public fun create_with_schema<T, CreatorWitness: drop>(
     _: CreatorWitness,
     protocol: &mut Protocol,
     resolver: &Resolver,
+    schema: Schema,
     topic: vector<u8>,
     metadata: vector<u8>,
     timestamp_ms: Option<u64>,
@@ -114,7 +117,6 @@ public fun create<T, CreatorWitness: drop>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Query<T> {
-    assert!(protocol.is_topic_supported(topic), EUnsupportedTopic);
     assert!(protocol.is_coin_type_supported<T>(), EUnsupportedCoinType);
     assert!(bond_amount >= protocol.minimum_bond_amount<T>(), EInsufficientBond);
     assert!(metadata.length() <= macros::max_metadata_length!(), EMetadataTooLong);
@@ -129,9 +131,10 @@ public fun create<T, CreatorWitness: drop>(
     let query_inner = query_inner::create<T>(
         &mut query_uid,
         resolver.id(),
-        protocol.default_liveness_ms(),
+        schema,
         topic,
         metadata,
+        protocol.default_liveness_ms(),
         timestamp_ms,
         callback_object_ids,
         type_name::with_defining_ids<CreatorWitness>(),
@@ -154,6 +157,52 @@ public fun create<T, CreatorWitness: drop>(
     protocol.increment_num_queries();
 
     query
+}
+
+/// Creates a new query with topic (backwards compatibility). Looks up schema from protocol.
+/// The query starts in Created state and validates all inputs against protocol constraints.
+///
+/// @param _witness Creator witness for authentication (consumed)
+/// @param protocol Protocol instance for validation
+/// @param resolver Resolver instance for dispute resolution
+/// @param topic Topic identifier (must be protocol-supported)
+/// @param metadata Optional metadata bytes
+/// @param timestamp_ms Optional timestamp for historical queries (must not be future)
+/// @param callback_object_ids vector of object ids for callback integration
+/// @param bond_amount Required bond amount (must meet protocol minimum)
+/// @param clock System clock for timestamp validation
+/// @param ctx Transaction context
+///
+/// @return New Query object ready to be shared
+public fun create<T, CreatorWitness: drop>(
+    witness: CreatorWitness,
+    protocol: &mut Protocol,
+    resolver: &Resolver,
+    topic: vector<u8>,
+    schema_version: u64,
+    metadata: vector<u8>,
+    timestamp_ms: Option<u64>,
+    callback_object_ids: vector<ID>,
+    bond_amount: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Query<T> {
+    assert!(protocol.has_topic_schema(topic, schema_version), ETopicSchemaNotFound);
+    let schema = *protocol.topic_schema(topic, schema_version);
+
+    create_with_schema<T, CreatorWitness>(
+        witness,
+        protocol,
+        resolver,
+        query_inner::new_standard_schema(schema, schema_version),
+        topic,
+        metadata,
+        timestamp_ms,
+        callback_object_ids,
+        bond_amount,
+        clock,
+        ctx,
+    )
 }
 
 /// Sets the liveness period for proposals on this query. Only callable before any
@@ -249,6 +298,7 @@ public fun propose_data<T>(
         ECannotProposeTooEarly,
     );
 
+    assert!(query_inner.schema().validate(&data), EInvalidProposalData);
     let (proposer, bond_amount, expires_at_ms) = query_inner.propose_data(
         bond.into_balance(),
         data,
@@ -326,9 +376,11 @@ public fun settle<T>(
     ctx: &mut TxContext,
 ) {
     let query_id = query.id.to_inner();
-    resolution_maybe.do_ref!(|r| assert!(r.query_id() == query_id, EWrongQueryResolution));
-
     let query_inner = query.load_inner_mut<T>();
+    resolution_maybe.do_ref!(|r| {
+        assert!(r.query_id() == query_id, EWrongQueryResolution);
+        assert!(query_inner.schema().validate(&r.data()), EInvalidProposalData);
+    });
 
     let (winner, total_payout, resolved_data) = query_inner.settle(resolution_maybe, clock, ctx);
 
@@ -397,9 +449,18 @@ public fun state<T>(query: &Query<T>, clock: &Clock): State {
 ///
 /// @param query Query object
 ///
-/// @return Topic bytes
+/// @return Topic bytes (empty for custom schemas)
 public fun topic<T>(query: &Query<T>): vector<u8> {
     query.load_inner<T>().topic()
+}
+
+/// Returns the schema for this query.
+///
+/// @param query Query object
+///
+/// @return Query schema
+public fun schema<T>(query: &Query<T>): &BaseSchema {
+    query.load_inner<T>().schema()
 }
 
 /// Returns the metadata associated with this query.

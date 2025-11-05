@@ -12,6 +12,7 @@ use sui::package;
 use sui::test_scenario::{Self, Scenario};
 use sui::test_utils;
 use reef::query_inner;
+use reef::macros;
 
 public struct TestCoin() has drop;
 public struct WrongWitness() has drop;
@@ -347,7 +348,7 @@ fun test_propose_data_fails_too_early_for_non_timestamp_query() {
 
     let bond = coin::mint_for_testing<TestCoin>(200, scenario.ctx());
     // Try to propose "too early" marker for non-timestamp query
-    query.propose_data(bond, query::too_early!(), &clock, scenario.ctx());
+    query.propose_data(bond, macros::too_early!(), &clock, scenario.ctx());
 
     cleanup(query, resolver, resolver_cap, protocol, protocol_cap, clock, scenario)
 }
@@ -1256,9 +1257,9 @@ fun test_propose_too_early_marker_for_timestamp_query() {
 
     let bond = coin::mint_for_testing<TestCoin>(200, scenario.ctx());
     // Should succeed for timestamp queries
-    query.propose_data(bond, query::too_early!(), &clock, scenario.ctx());
+    query.propose_data(bond, macros::too_early!(), &clock, scenario.ctx());
 
-    assert!(query.proposal_data() == option::some(query::too_early!()));
+    assert!(query.proposal_data() == option::some(macros::too_early!()));
 
     cleanup(query, resolver, resolver_cap, protocol, protocol_cap, clock, scenario)
 }
@@ -1284,9 +1285,9 @@ fun test_propose_unresolvable_marker() {
     );
 
     let bond = coin::mint_for_testing<TestCoin>(200, scenario.ctx());
-    query.propose_data(bond, query::unresolvable!(), &clock, scenario.ctx());
+    query.propose_data(bond, macros::unresolvable!(), &clock, scenario.ctx());
 
-    assert!(query.proposal_data() == option::some(query::unresolvable!()));
+    assert!(query.proposal_data() == option::some(macros::unresolvable!()));
 
     cleanup(query, resolver, resolver_cap, protocol, protocol_cap, clock, scenario)
 }
