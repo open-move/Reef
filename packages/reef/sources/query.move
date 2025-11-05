@@ -3,9 +3,9 @@ module reef::query;
 use reef::callback;
 use reef::macros;
 use reef::protocol::Protocol;
-use reef::query_inner::{Self, QueryInner, State, Schema};
+use reef::query_inner::{Self, QueryInner, State};
 use reef::resolver::{Resolver, Resolution, DisputeTicket};
-use reef::schema::Schema as BaseSchema;
+use reef::schema;
 use reef::versioned_object::{Self, VersionedObject};
 use std::type_name;
 use sui::clock::Clock;
@@ -57,6 +57,7 @@ public struct QueryCreated<phantom T> has copy, drop {
     topic: vector<u8>,
     bond_amount: u64,
     timestamp_ms: Option<u64>,
+    schema_version: Option<u64>,
 }
 
 public struct DataProposed has copy, drop {
@@ -108,7 +109,7 @@ public fun create_with_schema<T, CreatorWitness: drop>(
     _: CreatorWitness,
     protocol: &mut Protocol,
     resolver: &Resolver,
-    schema: Schema,
+    schema: query_inner::Schema,
     topic: vector<u8>,
     metadata: vector<u8>,
     timestamp_ms: Option<u64>,
@@ -141,6 +142,7 @@ public fun create_with_schema<T, CreatorWitness: drop>(
         bond_amount,
     );
 
+    let schema_version = query_inner.schema_version();
     let query = Query {
         id: query_uid,
         inner: versioned_object::create(query_inner::current_query_version(), query_inner, ctx),
@@ -150,6 +152,7 @@ public fun create_with_schema<T, CreatorWitness: drop>(
         topic,
         bond_amount,
         timestamp_ms,
+        schema_version,
         creator: ctx.sender(),
         query_id: query.id.to_inner(),
     });
@@ -459,7 +462,7 @@ public fun topic<T>(query: &Query<T>): vector<u8> {
 /// @param query Query object
 ///
 /// @return Query schema
-public fun schema<T>(query: &Query<T>): &BaseSchema {
+public fun schema<T>(query: &Query<T>): &schema::Schema {
     query.load_inner<T>().schema()
 }
 

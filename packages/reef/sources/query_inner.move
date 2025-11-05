@@ -332,6 +332,13 @@ public(package) fun schema<T>(query: &QueryInner<T>): &BaseSchema {
     }
 }
 
+public(package) fun schema_version<T>(query: &QueryInner<T>): Option<u64> {
+    match (&query.schema) {
+        Schema::Standard(_, version) => option::some(*version),
+        Schema::Custom(_) => option::none(),
+    }
+}
+
 public(package) fun metadata<T>(query: &QueryInner<T>): vector<u8> {
     query.metadata
 }

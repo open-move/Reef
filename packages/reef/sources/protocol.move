@@ -24,8 +24,14 @@ public struct ProtocolInner has key, store {
     fee_factor_bps: u64,
     default_liveness_ms: u64,
     resolver_fees: Table<TypeName, u64>,
-    topic_schemas: Table<SchemaRef, Schema>,
+    topic_schemas: Table<SchemaRef, SchemaEntry>,
     supported_coin_types: Table<TypeName, bool>,
+    last_schema_versions: Table<vector<u8>, u64>,
+}
+
+public struct SchemaEntry has copy, drop, store {
+    active: bool,
+    schema: Schema,
 }
 
 public struct ProtocolCap has key {
@@ -68,7 +74,7 @@ public struct TopicSchemaSet has copy, drop {
     topic: vector<u8>,
 }
 
-public struct TopicSchemaRemoved has copy, drop {
+public struct TopicSchemaDeactivated has copy, drop {
     version: u64,
     topic: vector<u8>,
 }
@@ -113,6 +119,7 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
         resolver_fees: table::new(ctx),
         topic_schemas: table::new(ctx),
         supported_coin_types: table::new(ctx),
+        last_schema_versions: table::new(ctx),
         fee_factor_bps: macros::default_fee_factor!(),
         default_liveness_ms: macros::min_liveness_ms!(),
     };
@@ -275,37 +282,60 @@ public fun num_queries(protocol: &Protocol): u64 {
 }
 
 /// Registers a schema for a topic. Standard schemas enable proposal validation.
+/// Enforces monotonic versioning - each new version must be previous + 1.
 ///
 /// @param protocol Protocol object
 /// @param _cap ProtocolCap for authorization
 /// @param topic Topic identifier that the schema applies to
+/// @param version Version number (must be previous + 1)
 /// @param schema Schema definition for validation
+/// @param clock System clock for timestamp
 public fun set_topic_schema(
     protocol: &mut Protocol,
     _: &ProtocolCap,
     topic: vector<u8>,
-    version: u64,
     schema: Schema,
 ) {
     assert!(!topic.is_empty(), EEmptyTopic);
     assert!(topic.length() <= macros::max_topic_length!(), ETopicTooLong);
 
     let state = protocol.load_inner_mut();
-    let schema_ref = schema::new_schema_ref(topic, version);
-    if (state.topic_schemas.contains(schema_ref)) {
-        state.topic_schemas.remove(schema_ref);
+    let last_version = if (state.last_schema_versions.contains(topic)) {
+        state.last_schema_versions[topic]
+    } else {
+        0
     };
 
-    state.topic_schemas.add(schema_ref, schema);
-    event::emit(TopicSchemaSet { topic, version });
+    let new_version = last_version + 1;
+    let schema_ref = schema::new_schema_ref(topic, new_version);
+
+    // Mark old version as inactive if it exists
+    if (new_version > 1) {
+        let old_ref = schema::new_schema_ref(topic, last_version);
+        if (state.topic_schemas.contains(old_ref)) {
+            let old_entry = &mut state.topic_schemas[old_ref];
+            old_entry.active = false;
+        };
+    };
+
+    state.topic_schemas.add(schema_ref, SchemaEntry { schema, active: true });
+
+    // Update last version
+    if (state.last_schema_versions.contains(topic)) {
+        state.last_schema_versions.remove(topic);
+    };
+
+    state.last_schema_versions.add(topic, new_version);
+    event::emit(TopicSchemaSet { topic, version: new_version });
 }
 
-/// Removes a registered schema for a topic.
+/// Marks a schema as inactive. Never deletes to preserve history.
 ///
 /// @param protocol Protocol object
 /// @param _cap ProtocolCap for authorization
-/// @param topic Topic to remove schema for
-public fun remove_topic_schema(
+/// @param topic Topic identifier
+/// @param version Version to mark inactive
+public fun deactivate_topic_schema(
     protocol: &mut Protocol,
     _: &ProtocolCap,
     topic: vector<u8>,
@@ -316,14 +346,17 @@ public fun remove_topic_schema(
 
     assert!(state.topic_schemas.contains(schema_ref), ESchemaNotFound);
 
-    state.topic_schemas.remove(schema_ref);
-    event::emit(TopicSchemaRemoved { topic, version });
+    let entry = &mut state.topic_schemas[schema_ref];
+    entry.active = false;
+
+    event::emit(TopicSchemaDeactivated { topic, version });
 }
 
-/// Gets a registered schema for a topic.
+/// Gets a registered schema for a topic. Must be active.
 ///
 /// @param protocol Protocol object
 /// @param topic Topic to get schema for
+/// @param version Version to retrieve
 ///
 /// @return Schema for the topic
 public fun topic_schema(protocol: &Protocol, topic: vector<u8>, version: u64): &Schema {
@@ -331,7 +364,7 @@ public fun topic_schema(protocol: &Protocol, topic: vector<u8>, version: u64): &
     let schema_ref = schema::new_schema_ref(topic, version);
 
     assert!(state.topic_schemas.contains(schema_ref), ESchemaNotFound);
-    &state.topic_schemas[schema_ref]
+    &state.topic_schemas[schema_ref].schema
 }
 
 /// Checks if a schema is registered for a topic.
