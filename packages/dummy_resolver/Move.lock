@@ -55,7 +55,7 @@ dependencies = [
 ]
 
 [move.toolchain-version]
-compiler-version = "1.56.2"
+compiler-version = "1.59.0"
 edition = "2024.beta"
 flavor = "sui"
 
@@ -63,6 +63,6 @@ flavor = "sui"
 
 [env.testnet]
 chain-id = "4c78adac"
-original-published-id = "0x801af4046c5532fb16286cbf43cf079f73858fbd959ac327d081d6b67662e336"
-latest-published-id = "0x801af4046c5532fb16286cbf43cf079f73858fbd959ac327d081d6b67662e336"
+original-published-id = "0x3e77909d861f8037eba720b530200a0181f4cc2c9575812342a777d0316bce6b"
+latest-published-id = "0x3e77909d861f8037eba720b530200a0181f4cc2c9575812342a777d0316bce6b"
 published-version = "1"

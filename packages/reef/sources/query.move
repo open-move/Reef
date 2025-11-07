@@ -365,38 +365,38 @@ public fun dispute_proposal<T>(
     ticket
 }
 
-/// Settles the query by distributing bonds to the winner. For disputed queries,
-/// requires resolution from authorized resolver. For expired queries, automatically
-/// awards to proposer. Winner determination based on data match for resolutions.
-///
-/// @param query Query to settle (must be Disputed with resolution OR Expired)
-/// @param resolution_maybe Optional resolution from resolver (required for disputed queries)
-/// @param clock System clock for state validation
-/// @param ctx Transaction context
-///
-/// Transfers all bonds to winner and emits QuerySettled event
-public fun settle<T>(
-    query: &mut Query<T>,
-    resolution_maybe: Option<Resolution>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    let query_id = query.id.to_inner();
-    let query_inner = query.load_inner_mut<T>();
-    resolution_maybe.do_ref!(|r| {
-        assert!(r.query_id() == query_id, EWrongQueryResolution);
-        assert!(query_inner.schema().validate(&r.data()), EInvalidProposalData);
-    });
+// /// Settles the query by distributing bonds to the winner. For disputed queries,
+// /// requires resolution from authorized resolver. For expired queries, automatically
+// /// awards to proposer. Winner determination based on data match for resolutions.
+// ///
+// /// @param query Query to settle (must be Disputed with resolution OR Expired)
+// /// @param resolution_maybe Optional resolution from resolver (required for disputed queries)
+// /// @param clock System clock for state validation
+// /// @param ctx Transaction context
+// ///
+// /// Transfers all bonds to winner and emits QuerySettled event
+// public fun settle<T>(
+//     query: &mut Query<T>,
+//     resolution_maybe: Option<Resolution>,
+//     clock: &Clock,
+//     ctx: &mut TxContext,
+// ) {
+//     let query_id = query.id.to_inner();
+//     let query_inner = query.load_inner_mut<T>();
+//     resolution_maybe.do_ref!(|r| {
+//         assert!(r.query_id() == query_id, EWrongQueryResolution);
+//         assert!(query_inner.schema().validate(&r.data()), EInvalidProposalData);
+//     });
 
-    let (winner, total_payout, resolved_data) = query_inner.settle(resolution_maybe, clock, ctx);
+//     let (winner, total_payout, resolved_data) = query_inner.settle(resolution_maybe, clock, ctx);
 
-    event::emit(QuerySettled {
-        winner,
-        query_id,
-        total_payout,
-        resolved_data,
-    });
-}
+//     event::emit(QuerySettled {
+//         winner,
+//         query_id,
+//         total_payout,
+//         resolved_data,
+//     });
+// }
 
 /// Settles the query and returns a callback object for external integrations.
 /// Performs same settlement logic as settle() but provides structured callback
@@ -415,7 +415,7 @@ public fun settle_with_callback<T>(
     ctx: &mut TxContext,
 ): callback::QuerySettled {
     let query_id = query.id.to_inner();
-    resolution_maybe.do_ref!(|r| assert!(r.query_id() ==query_id, EWrongQueryResolution));
+    resolution_maybe.do_ref!(|r| assert!(r.query_id() == query_id, EWrongQueryResolution));
 
     let query_inner = query.load_inner_mut<T>();
     let creator_witness = query_inner.creator_witness();
