@@ -143,6 +143,7 @@ public fun create_with_schema<T, CreatorWitness: drop>(
         callback_object_ids,
         type_name::with_defining_ids<CreatorWitness>(),
         bond_amount,
+        clock,
     );
 
     let schema_version = query_inner.schema_version();
@@ -304,7 +305,10 @@ public fun propose_data<T>(
         ECannotProposeTooEarly,
     );
 
-    assert!(query_inner.schema().validate(&data), EInvalidProposalData);
+    if (data != macros::too_early!() && data != macros::unresolvable!()) {
+        assert!(query_inner.schema().validate(&data), EInvalidProposalData);
+    };
+
     let (proposer, bond_amount, expires_at_ms) = query_inner.propose_data(
         bond.into_balance(),
         data,

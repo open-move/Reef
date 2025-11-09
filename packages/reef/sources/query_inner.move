@@ -47,6 +47,7 @@ public struct QueryInner<phantom T> has key, store {
     dispute: Option<Dispute>,
     /// Optional timestamp the query references (used for time-based feeds).
     timestamp_ms: Option<u64>,
+    created_at_ms: u64,
     /// Witness of the query creator's package.
     creator_witness: TypeName,
     proposal: Option<Proposal>,
@@ -113,6 +114,7 @@ public(package) fun create<T>(
     callback_object_ids: vector<ID>,
     creator_witness: TypeName,
     bond_amount: u64,
+    clock: &Clock
 ): QueryInner<T> {
     QueryInner {
         id: derived_object::claim(parent, QueryKey(CURRENT_QUERY_VERSION)),
@@ -128,6 +130,7 @@ public(package) fun create<T>(
         dispute: option::none(),
         proposal: option::none(),
         resolved_data: option::none(),
+        created_at_ms: clock.timestamp_ms(),
         balances: Balances {
             bond: balance::zero(),
             reward: balance::zero(),

@@ -84,26 +84,50 @@ public fun new_schema_ref(topic: vector<u8>, version: u64): SchemaRef {
     SchemaRef(topic, version)
 }
 
-public fun data_type_raw(): DataType { DataType::Raw }
+public fun data_type_raw(): DataType {
+    DataType::Raw
+}
 
-public fun data_type_u8(): DataType { DataType::U8 }
+public fun data_type_u8(): DataType {
+    DataType::U8
+}
 
-public fun data_type_u16(): DataType { DataType::U16 }
+public fun data_type_u16(): DataType {
+    DataType::U16
+}
 
-public fun data_type_u32(): DataType { DataType::U32 }
+public fun data_type_u32(): DataType {
+    DataType::U32
+}
 
-public fun data_type_u64(): DataType { DataType::U64 }
+public fun data_type_u64(): DataType {
+    DataType::U64
+}
 
-public fun data_type_u128(): DataType { DataType::U128 }
+public fun data_type_u128(): DataType {
+    DataType::U128
+}
 
-public fun data_type_u256(): DataType { DataType::U256 }
+public fun data_type_u256(): DataType {
+    DataType::U256
+}
 
-public fun data_type_bool(): DataType { DataType::Bool }
+public fun data_type_bool(): DataType {
+    DataType::Bool
+}
 
-public fun data_type_address(): DataType { DataType::Address }
+public fun data_type_address(): DataType {
+    DataType::Address
+}
 
-public fun data_type_bytes32(): DataType { DataType::Bytes32 }
+public fun data_type_bytes32(): DataType {
+    DataType::Bytes32
+}
 
-public fun data_type_timestamp(): DataType { DataType::Timestamp }
+public fun data_type_timestamp(): DataType {
+    DataType::Timestamp
+}
 
-public fun data_type_string(): DataType { DataType::String }
+public fun data_type_string(): DataType {
+    DataType::String
+}
