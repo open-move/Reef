@@ -452,7 +452,7 @@ public fun new_custom_schema(inner: BaseSchema): Schema {
 /// @param clock System clock for time-based state transitions
 ///
 /// @return Current State (Created, Proposed, Expired, Disputed, Resolved, or Settled)
-public fun state<T>(query: &Query<T>, clock: &Clock): State {
+public fun state<T>(query: &mut Query<T>, clock: &Clock): State {
     query.load_inner<T>().state(clock)
 }
 
@@ -461,7 +461,7 @@ public fun state<T>(query: &Query<T>, clock: &Clock): State {
 /// @param query Query object
 ///
 /// @return Topic bytes (empty for custom schemas)
-public fun topic<T>(query: &Query<T>): vector<u8> {
+public fun topic<T>(query: &mut Query<T>): vector<u8> {
     query.load_inner<T>().topic()
 }
 
@@ -470,7 +470,7 @@ public fun topic<T>(query: &Query<T>): vector<u8> {
 /// @param query Query object
 ///
 /// @return Query schema
-public fun schema<T>(query: &Query<T>): &schema::Schema {
+public fun schema<T>(query: &mut Query<T>): &schema::Schema {
     query.load_inner<T>().schema()
 }
 
@@ -479,7 +479,7 @@ public fun schema<T>(query: &Query<T>): &schema::Schema {
 /// @param query Query object
 ///
 /// @return Metadata bytes
-public fun metadata<T>(query: &Query<T>): vector<u8> {
+public fun metadata<T>(query: &mut Query<T>): vector<u8> {
     query.load_inner<T>().metadata()
 }
 
@@ -488,7 +488,7 @@ public fun metadata<T>(query: &Query<T>): vector<u8> {
 /// @param query Query object
 ///
 /// @return Bond amount in coin units
-public fun bond_amount<T>(query: &Query<T>): u64 {
+public fun bond_amount<T>(query: &mut Query<T>): u64 {
     query.load_inner<T>().bond_amount()
 }
 
@@ -497,57 +497,57 @@ public fun bond_amount<T>(query: &Query<T>): u64 {
 /// @param query Query object
 ///
 /// @return Vector of object IDs for callbacks
-public fun callback_object_ids<T>(query: &Query<T>): vector<ID> {
+public fun callback_object_ids<T>(query: &mut Query<T>): vector<ID> {
     query.load_inner<T>().callback_object_ids()
 }
 
 /// Returns the proposal data if one exists.
-public fun proposal_data<T>(query: &Query<T>): Option<vector<u8>> {
+public fun proposal_data<T>(query: &mut Query<T>): Option<vector<u8>> {
     query.load_inner<T>().proposal_data()
 }
 
 /// Returns the proposer address if a proposal exists.
-public fun proposer<T>(query: &Query<T>): Option<address> {
+public fun proposer<T>(query: &mut Query<T>): Option<address> {
     query.load_inner<T>().proposer()
 }
 
 /// Returns when the proposal expires (in milliseconds).
-public fun expires_at_ms<T>(query: &Query<T>): Option<u64> {
+public fun expires_at_ms<T>(query: &mut Query<T>): Option<u64> {
     query.load_inner<T>().expires_at_ms()
 }
 
 /// Returns the disputer address if the proposal was disputed.
-public fun disputer<T>(query: &Query<T>): Option<address> {
+public fun disputer<T>(query: &mut Query<T>): Option<address> {
     query.load_inner<T>().disputer()
 }
 
 /// Returns when the proposal was disputed (in milliseconds).
-public fun disputed_at_ms<T>(query: &Query<T>): Option<u64> {
+public fun disputed_at_ms<T>(query: &mut Query<T>): Option<u64> {
     query.load_inner<T>().disputed_at_ms()
 }
 
 /// Returns the resolved data if the query has been resolved.
-public fun resolved_data<T>(query: &Query<T>): Option<vector<u8>> {
+public fun resolved_data<T>(query: &mut Query<T>): Option<vector<u8>> {
     query.load_inner<T>().resolved_data()
 }
 
 /// Returns whether the query has been settled.
-public fun is_settled<T>(query: &Query<T>): bool {
+public fun is_settled<T>(query: &mut Query<T>): bool {
     query.load_inner<T>().is_settled()
 }
 
 /// Returns the optional timestamp this query is for.
-public fun timestamp_ms<T>(query: &Query<T>): Option<u64> {
+public fun timestamp_ms<T>(query: &mut Query<T>): Option<u64> {
     query.load_inner<T>().timestamp_ms()
 }
 
 /// Returns the liveness period in milliseconds.
-public fun liveness_ms<T>(query: &Query<T>): u64 {
+public fun liveness_ms<T>(query: &mut Query<T>): u64 {
     query.load_inner<T>().liveness_ms()
 }
 
 /// Returns the refund address if one is set.
-public fun refund_address<T>(query: &Query<T>): Option<address> {
+public fun refund_address<T>(query: &mut Query<T>): Option<address> {
     query.load_inner<T>().refund_address()
 }
 
@@ -579,8 +579,9 @@ public fun state_settled(): State {
     query_inner::state_settled()
 }
 
+#[allow(unused_mut_parameter)]
 /// Loads the immutable inner query for the current version.
-fun load_inner<T>(query: &Query<T>): &QueryInner<T> {
+fun load_inner<T>(query: &mut Query<T>): &QueryInner<T> {
     assert!(query.inner.version() == query_inner::current_query_version(), EInvalidQueryVersion);
     query.inner.load_value()
 }
