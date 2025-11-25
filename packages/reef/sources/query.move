@@ -1,8 +1,7 @@
 module reef::query;
 
 use reef::callback;
-use reef::macros;
-use reef::protocol::Protocol;
+use reef::protocol::{Self, Protocol};
 use reef::query_inner::{Self, QueryInner, State, Schema};
 use reef::resolver::{Resolver, Resolution, DisputeTicket};
 use reef::schema::{Self, Schema as BaseSchema};
@@ -46,8 +45,6 @@ public struct Query<phantom T> has key, store {
     id: UID,
     inner: VersionedObject,
 }
-
-public struct QueryKey(u64) has copy, drop, store;
 
 // ====== Events ======
 
@@ -119,7 +116,7 @@ public fun create_with_schema<T, CreatorWitness: drop>(
     ctx: &mut TxContext,
 ): Query<T> {
     assert!(protocol.is_coin_type_supported<T>(), EUnsupportedCoinType);
-    assert!(metadata.length() <= macros::max_metadata_length!(), EMetadataTooLong);
+    assert!(metadata.length() <= max_metadata_length!(), EMetadataTooLong);
 
     let min_bond_amount = protocol.minimum_bond_amount<T>();
     let bond_amount = bond_amount_maybe.destroy_with_default(min_bond_amount);
@@ -130,7 +127,7 @@ public fun create_with_schema<T, CreatorWitness: drop>(
     };
 
     let query_index = protocol.num_queries();
-    let mut query_uid = derived_object::claim(protocol.extend(), QueryKey(query_index));
+    let mut query_uid = derived_object::claim(protocol.extend(), query_index);
 
     let query_inner = query_inner::create<T>(
         &mut query_uid,
@@ -236,7 +233,7 @@ public fun set_liveness_ms<T, CreatorWitness: drop>(
     );
 
     let liveness_ms = liveness_ms_maybe.destroy_with_default(protocol.default_liveness_ms());
-    assert!(liveness_ms >= macros::min_liveness_ms!(), EInvalidLiveness);
+    assert!(liveness_ms >= protocol::min_liveness_ms!(), EInvalidLiveness);
     query_inner.set_liveness_ms(liveness_ms)
 }
 
@@ -301,11 +298,11 @@ public fun propose_data<T>(
     // meaningful for timestamp-based queries where data might not yet exist.
     // Event-based queries should provide actual data or "unresolvable".
     assert!(
-        !(query_inner.timestamp_ms().is_none() && data == macros::too_early!()),
+        !(query_inner.timestamp_ms().is_none() && data == too_early!()),
         ECannotProposeTooEarly,
     );
 
-    if (data != macros::too_early!() && data != macros::unresolvable!()) {
+    if (data != too_early!() && data != unresolvable!()) {
         assert!(query_inner.schema().validate(&data), EInvalidProposalData);
     };
 
@@ -592,4 +589,18 @@ fun load_inner<T>(query: &Query<T>): &QueryInner<T> {
 fun load_inner_mut<T>(query: &mut Query<T>): &mut QueryInner<T> {
     assert!(query.inner.version() == query_inner::current_query_version(), EInvalidQueryVersion);
     query.inner.load_value_mut()
+}
+
+/// Data value representing a too early query proposal
+public macro fun too_early(): vector<u8> {
+    x"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe"
+}
+
+/// Data value representing unresolvable query
+public macro fun unresolvable(): vector<u8> {
+    x"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd"
+}
+
+public macro fun max_metadata_length(): u64 {
+    1024 * 4 // Maximum 1KB for metadata
 }

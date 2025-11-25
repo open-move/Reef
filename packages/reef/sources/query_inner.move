@@ -1,6 +1,6 @@
 module reef::query_inner;
 
-use reef::macros;
+use reef::protocol;
 use reef::resolver::{Self, Resolution, DisputeTicket};
 use reef::schema::Schema as BaseSchema;
 use std::type_name::TypeName;
@@ -99,8 +99,6 @@ public enum Schema has copy, drop, store {
     Custom(BaseSchema),
 }
 
-public struct QueryKey(u64) has copy, drop, store;
-
 const CURRENT_QUERY_VERSION: u64 = 1;
 
 public(package) fun create<T>(
@@ -114,10 +112,10 @@ public(package) fun create<T>(
     callback_object_ids: vector<ID>,
     creator_witness: TypeName,
     bond_amount: u64,
-    clock: &Clock
+    clock: &Clock,
 ): QueryInner<T> {
     QueryInner {
-        id: derived_object::claim(parent, QueryKey(CURRENT_QUERY_VERSION)),
+        id: derived_object::claim(parent, CURRENT_QUERY_VERSION),
         topic,
         schema,
         metadata,
@@ -143,7 +141,7 @@ public(package) fun create<T>(
 }
 
 public(package) fun set_liveness_ms<T>(query: &mut QueryInner<T>, liveness_ms: u64) {
-    assert!(liveness_ms >= macros::min_liveness_ms!(), EInvalidLiveness);
+    assert!(liveness_ms >= protocol::min_liveness_ms!(), EInvalidLiveness);
     query.config.liveness_ms = liveness_ms;
 }
 
@@ -224,7 +222,7 @@ public(package) fun dispute_proposal<T>(
     let fee_amount =
         (
             (fee_factor_bps as u128) * (query.bond_amount as u128)
-         / (macros::bps!() as u128),
+         / (protocol::bps!() as u128),
         ) as u64;
 
     let verification_bond_amount = query.balances.bond.value();

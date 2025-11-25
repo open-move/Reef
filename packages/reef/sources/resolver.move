@@ -33,7 +33,7 @@ public struct DisputeTicket<phantom T> {
     verification_bond_amount: u64,
 }
 
-public struct ResolverCapKey() has copy, drop, store;
+const RESOLVER_CAP_KEY: vector<u8> = b"RESOLVER_CAP";
 
 public struct ResolverEnabled has copy, drop {
     resolver_id: ID,
@@ -81,7 +81,7 @@ public fun create<Witness: drop>(
 
     let resolver_cap = ResolverCap {
         resolver_id: resolver.id.to_inner(),
-        id: derived_object::claim(&mut resolver.id, ResolverCapKey()),
+        id: derived_object::claim(&mut resolver.id, RESOLVER_CAP_KEY),
     };
 
     (resolver, resolver_cap)

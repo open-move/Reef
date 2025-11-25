@@ -1,6 +1,5 @@
 module reef::protocol;
 
-use reef::macros;
 use reef::schema::{Self, Schema, SchemaRef};
 use reef::versioned_object::{Self, VersionedObject};
 use std::type_name::{Self, TypeName};
@@ -15,8 +14,6 @@ public struct Protocol has key, store {
     id: UID,
     inner: VersionedObject,
 }
-
-public struct ProtocolInnerkey(u64) has copy, drop, store;
 
 public struct ProtocolInner has key, store {
     id: UID,
@@ -38,9 +35,9 @@ public struct ProtocolCap has key {
     id: UID,
 }
 
-public struct ProtocolCapKey() has copy, drop, store;
+const PROTOCOL_CAP_KEY: vector<u8> = b"PROTOCOL_CAP";
 
-const PROTOCOL_VERSION: u64 = 1;
+const CURRENT_PROTOCOL_VERSION: u64 = 1;
 
 public struct DefaultLivenessChanged has copy, drop {
     old_ms: u64,
@@ -114,23 +111,23 @@ public fun initialize(publisher: Publisher, ctx: &mut TxContext): (Protocol, Pro
     let mut protocol_uid = object::new(ctx);
 
     let protocol_v1 = ProtocolInner {
-        id: derived_object::claim(&mut protocol_uid, ProtocolInnerkey(PROTOCOL_VERSION)),
+        id: derived_object::claim(&mut protocol_uid, CURRENT_PROTOCOL_VERSION),
         num_queries: 0,
         resolver_fees: table::new(ctx),
         topic_schemas: table::new(ctx),
         supported_coin_types: table::new(ctx),
         last_schema_versions: table::new(ctx),
-        fee_factor_bps: macros::default_fee_factor!(),
-        default_liveness_ms: macros::min_liveness_ms!(),
+        fee_factor_bps: default_fee_factor!(),
+        default_liveness_ms: min_liveness_ms!(),
     };
 
     let protocol_cap = ProtocolCap {
-        id: derived_object::claim(&mut protocol_uid, ProtocolCapKey()),
+        id: derived_object::claim(&mut protocol_uid, PROTOCOL_CAP_KEY),
     };
 
     let protocol = Protocol {
         id: protocol_uid,
-        inner: versioned_object::create(PROTOCOL_VERSION, protocol_v1, ctx),
+        inner: versioned_object::create(CURRENT_PROTOCOL_VERSION, protocol_v1, ctx),
     };
 
     publisher.burn();
@@ -152,7 +149,7 @@ public fun transfer_cap(cap: ProtocolCap, recipient: address) {
 /// @param _cap ProtocolCap for authorization
 /// @param liveness_ms New default liveness in milliseconds (must be >= minimum)
 public fun set_default_liveness_ms(protocol: &mut Protocol, _: &ProtocolCap, liveness_ms: u64) {
-    assert!(liveness_ms >= macros::min_liveness_ms!(), EInvalidLiveness);
+    assert!(liveness_ms >= min_liveness_ms!(), EInvalidLiveness);
     let state = protocol.load_inner_mut();
     let old_ms = state.default_liveness_ms;
     state.default_liveness_ms = liveness_ms;
@@ -168,7 +165,7 @@ public fun set_default_liveness_ms(protocol: &mut Protocol, _: &ProtocolCap, liv
 /// @param _cap ProtocolCap for authorization
 /// @param fee_factor_bps Fee factor (1-10000 basis points, used in minimum bond calculation)
 public fun set_fee_factor_bps(protocol: &mut Protocol, _: &ProtocolCap, fee_factor_bps: u64) {
-    assert!(fee_factor_bps > 0 && fee_factor_bps <= macros::bps!(), EInvalidFeeFactor);
+    assert!(fee_factor_bps > 0 && fee_factor_bps <= bps!(), EInvalidFeeFactor);
     let state = protocol.load_inner_mut();
     let old_bps = state.fee_factor_bps;
     state.fee_factor_bps = fee_factor_bps;
@@ -264,7 +261,7 @@ public fun minimum_bond_amount<T>(protocol: &Protocol): u64 {
     assert!(state.resolver_fees.contains(coin_type), EUnsupportedCoinType);
 
     (
-        (state.resolver_fees[coin_type] as u128) * (macros::bps!() as u128) / (state.fee_factor_bps as u128),
+        (state.resolver_fees[coin_type] as u128) * (bps!() as u128) / (state.fee_factor_bps as u128),
     ) as u64
 }
 
@@ -297,7 +294,7 @@ public fun set_topic_schema(
     schema: Schema,
 ) {
     assert!(!topic.is_empty(), EEmptyTopic);
-    assert!(topic.length() <= macros::max_topic_length!(), ETopicTooLong);
+    assert!(topic.length() <= max_topic_length!(), ETopicTooLong);
 
     let state = protocol.load_inner_mut();
     let last_version = if (state.last_schema_versions.contains(topic)) {
@@ -388,14 +385,30 @@ public(package) fun increment_num_queries(protocol: &mut Protocol) {
 
 /// Loads the immutable inner protocol for the current version.
 fun load_inner(protocol: &Protocol): &ProtocolInner {
-    assert!(protocol.inner.version() == PROTOCOL_VERSION, EInvalidProtocolVersion);
+    assert!(protocol.inner.version() == CURRENT_PROTOCOL_VERSION, EInvalidProtocolVersion);
     protocol.inner.load_value()
 }
 
 /// Loads the mutable inner protocol for the current version.
 fun load_inner_mut(protocol: &mut Protocol): &mut ProtocolInner {
-    assert!(protocol.inner.version() == PROTOCOL_VERSION, EInvalidProtocolVersion);
+    assert!(protocol.inner.version() == CURRENT_PROTOCOL_VERSION, EInvalidProtocolVersion);
     protocol.inner.load_value_mut()
+}
+
+public macro fun min_liveness_ms(): u64 {
+    5 * 60 * 1000
+}
+
+public macro fun default_fee_factor(): u64 {
+    5000
+}
+
+public macro fun bps(): u64 {
+    10_000
+}
+
+public macro fun max_topic_length(): u64 {
+    256 // Maximum 256 bytes for a topic
 }
 
 #[test_only]

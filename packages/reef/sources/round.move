@@ -37,9 +37,6 @@ public struct Storage has store {
     inner: Bag,
 }
 
-public struct StorageKey(ID) has copy, drop, store;
-public struct RoundKey(u64) has copy, drop, store;
-
 public struct RoundStarted has copy, drop {
     round_no: u64,
     end_time_ms: u64,
@@ -144,7 +141,7 @@ fun ensure_round_exists(manager: &mut RoundManager, round_no: u64): &mut Round {
         let (start_time, end_time) = round_boundaries(manager, round_no);
 
         let new_round = Round {
-            id: derived_object::claim(&mut manager.id, RoundKey(round_no)),
+            id: derived_object::claim(&mut manager.id, round_no),
             round_no,
             end_time_ms: end_time,
             start_time_ms: start_time,
@@ -266,7 +263,7 @@ public fun initialize_storage(round: &mut Round, cap: &ResolverCap, ctx: &mut Tx
     assert!(!round.is_storage_initialized(cap), EStorageAlreadyInitialized);
     dynamic_field::add(
         &mut round.id,
-        StorageKey(cap.cap_resolver_id()),
+        cap.cap_resolver_id(),
         Storage { inner: bag::new(ctx) },
     )
 }
@@ -278,7 +275,7 @@ public fun initialize_storage(round: &mut Round, cap: &ResolverCap, ctx: &mut Tx
 ///
 /// @return True if storage exists
 public fun is_storage_initialized(round: &Round, cap: &ResolverCap): bool {
-    dynamic_field::exists_(&round.id, StorageKey(cap.cap_resolver_id()))
+    dynamic_field::exists_(&round.id, cap.cap_resolver_id())
 }
 
 /// Returns read-only access to resolver storage for this round.
@@ -289,7 +286,7 @@ public fun is_storage_initialized(round: &Round, cap: &ResolverCap): bool {
 /// @return Reference to storage Bag
 public fun storage(round: &Round, cap: &ResolverCap): &Bag {
     assert!(round.is_storage_initialized(cap), EStorageNotInitialized);
-    &dynamic_field::borrow<_, Storage>(&round.id, StorageKey(cap.cap_resolver_id())).inner
+    &dynamic_field::borrow<_, Storage>(&round.id, cap.cap_resolver_id()).inner
 }
 
 /// Returns mutable access to resolver storage for this round.
@@ -302,7 +299,7 @@ public fun storage_mut(round: &mut Round, cap: &ResolverCap): &mut Bag {
     assert!(round.is_storage_initialized(cap), EStorageNotInitialized);
     &mut dynamic_field::borrow_mut<_, Storage>(
         &mut round.id,
-        StorageKey(cap.cap_resolver_id()),
+        cap.cap_resolver_id(),
     ).inner
 }
 
