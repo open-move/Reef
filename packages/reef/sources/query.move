@@ -602,5 +602,5 @@ public macro fun unresolvable(): vector<u8> {
 }
 
 public macro fun max_metadata_length(): u64 {
-    1024 * 4 // Maximum 1KB for metadata
+    1024 * 16 // Maximum 16KB for metadata
 }
