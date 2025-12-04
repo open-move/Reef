@@ -127,7 +127,7 @@ public fun create_with_schema<T, CreatorWitness: drop>(
     };
 
     let query_index = protocol.num_queries();
-    let mut query_uid = derived_object::claim(protocol.extend(), query_index);
+    let mut query_uid = derived_object::claim(protocol.extend(), vector[query_index]);
 
     let query_inner = query_inner::create<T>(
         &mut query_uid,
