@@ -1,7 +1,7 @@
 module reef::protocol;
 
 use reef::schema::{Self, Schema, SchemaRef};
-use reef::versioned_object::{Self, VersionedObject};
+use versioned_object::versioned_object::{Self, VersionedObject};
 use std::type_name::{Self, TypeName};
 use sui::derived_object;
 use sui::event;

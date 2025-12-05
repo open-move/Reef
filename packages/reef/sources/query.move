@@ -5,7 +5,7 @@ use reef::protocol::{Self, Protocol};
 use reef::query_inner::{Self, QueryInner, State, Schema};
 use reef::resolver::{Resolver, Resolution, DisputeTicket};
 use reef::schema::{Self, Schema as BaseSchema};
-use reef::versioned_object::{Self, VersionedObject};
+use versioned_object::versioned_object::{Self, VersionedObject};
 use std::type_name;
 use sui::clock::Clock;
 use sui::coin::Coin;
