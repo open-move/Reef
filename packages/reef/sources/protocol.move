@@ -222,7 +222,7 @@ public fun remove_resolver_fee<T>(protocol: &mut Protocol, _: &ProtocolCap) {
 /// @param protocol Protocol object
 ///
 /// @return Resolution fee amount
-public fun resolver_fee<T>(protocol: &Protocol): u64 {
+public fun resolver_fee<T>(protocol: &mut Protocol): u64 {
     let coin_type = type_name::with_defining_ids<T>();
     let state = protocol.load_inner();
 
@@ -235,7 +235,7 @@ public fun resolver_fee<T>(protocol: &Protocol): u64 {
 /// @param protocol Protocol to check
 ///
 /// @return true if coin type is supported
-public fun is_coin_type_supported<T>(protocol: &Protocol): bool {
+public fun is_coin_type_supported<T>(protocol: &mut Protocol): bool {
     protocol.load_inner().supported_coin_types.contains(type_name::with_defining_ids<T>())
 }
 
@@ -244,7 +244,7 @@ public fun is_coin_type_supported<T>(protocol: &Protocol): bool {
 /// @param protocol Protocol object
 ///
 /// @return Default liveness period in milliseconds
-public fun default_liveness_ms(protocol: &Protocol): u64 {
+public fun default_liveness_ms(protocol: &mut Protocol): u64 {
     protocol.load_inner().default_liveness_ms
 }
 
@@ -254,7 +254,7 @@ public fun default_liveness_ms(protocol: &Protocol): u64 {
 /// @param protocol Protocol object
 ///
 /// @return Minimum bond amount using formula: (resolver_fee * 10000) / fee_factor_bps
-public fun minimum_bond_amount<T>(protocol: &Protocol): u64 {
+public fun minimum_bond_amount<T>(protocol: &mut Protocol): u64 {
     let state = protocol.load_inner();
 
     let coin_type = type_name::with_defining_ids<T>();
@@ -270,11 +270,11 @@ public fun minimum_bond_amount<T>(protocol: &Protocol): u64 {
 /// @param protocol Protocol object
 ///
 /// @return Fee factor (1-10000 basis points)
-public fun fee_factor_bps(protocol: &Protocol): u64 {
+public fun fee_factor_bps(protocol: &mut Protocol): u64 {
     protocol.load_inner().fee_factor_bps
 }
 
-public fun num_queries(protocol: &Protocol): u64 {
+public fun num_queries(protocol: &mut Protocol): u64 {
     protocol.load_inner().num_queries
 }
 
@@ -356,7 +356,7 @@ public fun deactivate_topic_schema(
 /// @param version Version to retrieve
 ///
 /// @return Schema for the topic
-public fun topic_schema(protocol: &Protocol, topic: vector<u8>, version: u64): &Schema {
+public fun topic_schema(protocol: &mut Protocol, topic: vector<u8>, version: u64): &Schema {
     let state = protocol.load_inner();
     let schema_ref = schema::new_schema_ref(topic, version);
 
@@ -370,8 +370,12 @@ public fun topic_schema(protocol: &Protocol, topic: vector<u8>, version: u64): &
 /// @param topic Topic to check
 ///
 /// @return true if schema exists for topic
-public fun has_topic_schema(protocol: &Protocol, topic: vector<u8>, version: u64): bool {
+public fun has_topic_schema(protocol: &mut Protocol, topic: vector<u8>, version: u64): bool {
     protocol.load_inner().topic_schemas.contains(schema::new_schema_ref(topic, version))
+}
+
+public fun is_topic_schema_active(protocol: &mut Protocol, topic: vector<u8>, version: u64): bool {
+    protocol.load_inner().topic_schemas[schema::new_schema_ref(topic, version)].active
 }
 
 public(package) fun extend(protocol: &mut Protocol): &mut UID {
@@ -384,7 +388,8 @@ public(package) fun increment_num_queries(protocol: &mut Protocol) {
 }
 
 /// Loads the immutable inner protocol for the current version.
-fun load_inner(protocol: &Protocol): &ProtocolInner {
+#[allow(unused_mut_parameter)]
+fun load_inner(protocol: &mut Protocol): &ProtocolInner {
     assert!(protocol.inner.version() == CURRENT_PROTOCOL_VERSION, EInvalidProtocolVersion);
     protocol.inner.load_value()
 }
@@ -417,6 +422,6 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-public fun load_inner_for_testing(protocol: &Protocol): &ProtocolInner {
+public fun load_inner_for_testing(protocol: &mut Protocol): &ProtocolInner {
     protocol.load_inner()
 }

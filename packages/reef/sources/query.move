@@ -36,6 +36,7 @@ const EInvalidQueryVersion: u64 = 11;
 const EWrongQueryResolution: u64 = 12;
 /// Thrown when proposal data doesn't match schema
 const EInvalidProposalData: u64 = 13;
+const ETopicSchemaInactive: u64 = 14;
 
 /// Optimistic oracle query. Tracks the lifecycle from creation to
 /// settlement, including bonds, proposals, disputes, and callbacks for a given
@@ -189,6 +190,7 @@ public fun create<T, CreatorWitness: drop>(
     ctx: &mut TxContext,
 ): Query<T> {
     assert!(protocol.has_topic_schema(topic, schema_version), ETopicSchemaNotFound);
+    assert!(protocol.is_topic_schema_active(topic, schema_version), ETopicSchemaInactive);
     let schema = *protocol.topic_schema(topic, schema_version);
 
     create_with_schema<T, CreatorWitness>(
@@ -217,7 +219,7 @@ public fun create<T, CreatorWitness: drop>(
 /// @param clock System clock for state validation
 public fun set_liveness_ms<T, CreatorWitness: drop>(
     query: &mut Query<T>,
-    protocol: &Protocol,
+    protocol: &mut Protocol,
     _: CreatorWitness,
     liveness_ms_maybe: Option<u64>,
     clock: &Clock,
@@ -331,7 +333,7 @@ public fun propose_data<T>(
 ///
 /// Emits ProposalDisputed event
 public fun dispute_proposal<T>(
-    protocol: &Protocol,
+    protocol: &mut Protocol,
     query: &mut Query<T>,
     bond: Coin<T>,
     clock: &Clock,
