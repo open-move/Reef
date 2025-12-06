@@ -9,7 +9,6 @@ use versioned_object::versioned_object::{Self, VersionedObject};
 use std::type_name;
 use sui::clock::Clock;
 use sui::coin::Coin;
-use sui::derived_object;
 use sui::event;
 
 // ====== Error codes ======
@@ -38,7 +37,7 @@ const EWrongQueryResolution: u64 = 12;
 /// Thrown when proposal data doesn't match schema
 const EInvalidProposalData: u64 = 13;
 
-/// Optimistic oracle request. Tracks the lifecycle from creation to
+/// Optimistic oracle query. Tracks the lifecycle from creation to
 /// settlement, including bonds, proposals, disputes, and callbacks for a given
 /// coin type `T`.
 public struct Query<phantom T> has key, store {
@@ -126,9 +125,7 @@ public fun create_with_schema<T, CreatorWitness: drop>(
         assert!(*timestamp_ms.borrow() <= clock.timestamp_ms(), ETimestampInFuture);
     };
 
-    let query_index = protocol.num_queries();
-    let mut query_uid = derived_object::claim(protocol.extend(), vector[query_index]);
-
+    let mut query_uid = object::new(ctx);
     let query_inner = query_inner::create<T>(
         &mut query_uid,
         resolver.id(),
@@ -149,6 +146,8 @@ public fun create_with_schema<T, CreatorWitness: drop>(
         inner: versioned_object::create(query_inner::current_query_version(), query_inner, ctx),
     };
 
+    protocol.increment_num_queries();
+
     event::emit(QueryCreated<T> {
         topic,
         bond_amount,
@@ -157,8 +156,6 @@ public fun create_with_schema<T, CreatorWitness: drop>(
         creator: ctx.sender(),
         query_id: query.id.to_inner(),
     });
-
-    protocol.increment_num_queries();
 
     query
 }

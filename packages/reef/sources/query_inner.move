@@ -41,7 +41,7 @@ public struct QueryInner<phantom T> has key, store {
     schema: Schema,
     /// Query config such as liveness window and refund address.
     config: Config,
-    /// Small arbitrary metadata provided at creation to contextualize the query offchain.
+    /// walrus blob id or arbitrary metadata provided at creation to contextualize the query offchain.
     metadata: vector<u8>,
     balances: Balances<T>,
     dispute: Option<Dispute>,
