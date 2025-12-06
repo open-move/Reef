@@ -21,9 +21,10 @@ const EDataNotProposed: u64 = 4;
 /// Thrown when resolution timestamp is before dispute timestamp
 const EStaleResolution: u64 = 5;
 /// Thrown when resolution witness type doesn't match resolver
-const EWrongResolverType: u64 = 6;
+const EInvalidResolverType: u64 = 6;
 /// Thrown when query state is invalid for winner determination
 const EInvalidQueryStatus: u64 = 7;
+const EInvalidResolutionQuery: u64 = 8;
 
 /// Optimistic oracle request. Tracks the lifecycle from creation to
 /// settlement, including bonds, proposals, disputes, and callbacks for a given
@@ -282,7 +283,8 @@ public(package) fun new_custom_schema(inner: BaseSchema): Schema {
 fun apply_resolution<T>(query: &mut QueryInner<T>, resolution: Resolution) {
     assert!(query.proposal.is_some() && query.dispute.is_some(), EDataNotProposed);
 
-    assert!(resolution.resolver_id() == query.resolver_id, EWrongResolverType);
+    assert!(resolution.query_id() == query.id(), EInvalidResolutionQuery);
+    assert!(resolution.resolver_id() == query.resolver_id, EInvalidResolverType);
     assert!(resolution.resolved_at_ms() >= query.dispute.borrow().disputed_at_ms, EStaleResolution);
 
     query.resolved_data.fill(resolution.data());

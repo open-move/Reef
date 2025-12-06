@@ -5,11 +5,11 @@ use reef::protocol::{Self, Protocol};
 use reef::query_inner::{Self, QueryInner, State, Schema};
 use reef::resolver::{Resolver, Resolution, DisputeTicket};
 use reef::schema::{Self, Schema as BaseSchema};
-use versioned_object::versioned_object::{Self, VersionedObject};
 use std::type_name;
 use sui::clock::Clock;
 use sui::coin::Coin;
 use sui::event;
+use versioned_object::versioned_object::{Self, VersionedObject};
 
 // ====== Error codes ======
 
@@ -413,9 +413,12 @@ public fun settle_with_callback<T>(
     ctx: &mut TxContext,
 ): callback::QuerySettled {
     let query_id = query.id.to_inner();
-    resolution_maybe.do_ref!(|r| assert!(r.query_id() == query_id, EWrongQueryResolution));
-
     let query_inner = query.load_inner_mut<T>();
+    resolution_maybe.do_ref!(|r| {
+        assert!(r.query_id() == query_id, EWrongQueryResolution);
+        assert!(query_inner.schema().validate(&r.data()), EInvalidProposalData);
+    });
+
     let creator_witness = query_inner.creator_witness();
     let (winner, total_payout, resolved_data) = query_inner.settle(resolution_maybe, clock, ctx);
 
