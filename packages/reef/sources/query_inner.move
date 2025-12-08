@@ -402,6 +402,10 @@ public(package) fun is_settled<T>(query: &QueryInner<T>): bool {
     query.settled
 }
 
+public(package) fun created_at_ms<T>(query: &QueryInner<T>): u64 {
+    query.created_at_ms
+}
+
 public(package) fun timestamp_ms<T>(query: &QueryInner<T>): Option<u64> {
     query.timestamp_ms
 }
@@ -416,6 +420,18 @@ public(package) fun refund_address<T>(query: &QueryInner<T>): Option<address> {
 
 public(package) fun creator_witness<T>(query: &QueryInner<T>): TypeName {
     query.creator_witness
+}
+
+public(package) fun resolver_id<T>(query: &QueryInner<T>): ID {
+    query.resolver_id
+}
+
+public(package) fun bond_balance<T>(query: &QueryInner<T>): u64 {
+    query.balances.bond.value()
+}
+
+public(package) fun reward_balance<T>(query: &QueryInner<T>): u64 {
+    query.balances.reward.value()
 }
 
 public(package) fun id<T>(query: &QueryInner<T>): ID {

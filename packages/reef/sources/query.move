@@ -586,6 +586,11 @@ public fun is_settled<T>(query: &mut Query<T>): bool {
     query.load_inner<T>().is_settled()
 }
 
+/// Returns when the query was created (ms).
+public fun created_at_ms<T>(query: &mut Query<T>): u64 {
+    query.load_inner<T>().created_at_ms()
+}
+
 /// Returns the optional timestamp this query is for.
 public fun timestamp_ms<T>(query: &mut Query<T>): Option<u64> {
     query.load_inner<T>().timestamp_ms()
@@ -599,6 +604,26 @@ public fun liveness_ms<T>(query: &mut Query<T>): u64 {
 /// Returns the refund address if one is set.
 public fun refund_address<T>(query: &mut Query<T>): Option<address> {
     query.load_inner<T>().refund_address()
+}
+
+/// Returns the creator witness type name for this query.
+public fun creator_witness<T>(query: &mut Query<T>): TypeName {
+    query.load_inner<T>().creator_witness()
+}
+
+/// Returns the resolver ID authorized for this query.
+public fun resolver_id<T>(query: &mut Query<T>): ID {
+    query.load_inner<T>().resolver_id()
+}
+
+/// Returns the current bond balance held by the query.
+public fun bond_balance<T>(query: &mut Query<T>): u64 {
+    query.load_inner<T>().bond_balance()
+}
+
+/// Returns the current reward balance held by the query.
+public fun reward_balance<T>(query: &mut Query<T>): u64 {
+    query.load_inner<T>().reward_balance()
 }
 
 public fun id<T>(query: &Query<T>): ID {
