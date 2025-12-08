@@ -15,6 +15,7 @@ use versioned_object::versioned_object::{Self, VersionedObject};
 
 /// Thrown when liveness period is below minimum required
 const EInvalidLiveness: u64 = 1;
+/// Thrown when topic schema is not found
 const ETopicSchemaNotFound: u64 = 2;
 /// Thrown when coin type is not supported by protocol
 const EUnsupportedCoinType: u64 = 3;
@@ -36,6 +37,7 @@ const EInvalidQueryVersion: u64 = 11;
 const EWrongQueryResolution: u64 = 12;
 /// Thrown when proposal data doesn't match schema
 const EInvalidProposalData: u64 = 13;
+/// Thrown when topic schema is inactive
 const ETopicSchemaInactive: u64 = 14;
 
 /// Optimistic oracle query. Tracks the lifecycle from creation to
@@ -106,7 +108,7 @@ public fun create_with_schema<T, CreatorWitness: drop>(
     _: CreatorWitness,
     protocol: &mut Protocol,
     resolver: &Resolver,
-    schema: query_inner::Schema,
+    schema: Schema,
     topic: vector<u8>,
     metadata: vector<u8>,
     timestamp_ms: Option<u64>,
@@ -219,8 +221,8 @@ public fun create<T, CreatorWitness: drop>(
 /// @param clock System clock for state validation
 public fun set_liveness_ms<T, CreatorWitness: drop>(
     query: &mut Query<T>,
-    protocol: &mut Protocol,
     _: CreatorWitness,
+    protocol: &mut Protocol,
     liveness_ms_maybe: Option<u64>,
     clock: &Clock,
 ) {
@@ -365,39 +367,6 @@ public fun dispute_proposal<T>(
     ticket
 }
 
-// /// Settles the query by distributing bonds to the winner. For disputed queries,
-// /// requires resolution from authorized resolver. For expired queries, automatically
-// /// awards to proposer. Winner determination based on data match for resolutions.
-// ///
-// /// @param query Query to settle (must be Disputed with resolution OR Expired)
-// /// @param resolution_maybe Optional resolution from resolver (required for disputed queries)
-// /// @param clock System clock for state validation
-// /// @param ctx Transaction context
-// ///
-// /// Transfers all bonds to winner and emits QuerySettled event
-// public fun settle<T>(
-//     query: &mut Query<T>,
-//     resolution_maybe: Option<Resolution>,
-//     clock: &Clock,
-//     ctx: &mut TxContext,
-// ) {
-//     let query_id = query.id.to_inner();
-//     let query_inner = query.load_inner_mut<T>();
-//     resolution_maybe.do_ref!(|r| {
-//         assert!(r.query_id() == query_id, EWrongQueryResolution);
-//         assert!(query_inner.schema().validate(&r.data()), EInvalidProposalData);
-//     });
-
-//     let (winner, total_payout, resolved_data) = query_inner.settle(resolution_maybe, clock, ctx);
-
-//     event::emit(QuerySettled {
-//         winner,
-//         query_id,
-//         total_payout,
-//         resolved_data,
-//     });
-// }
-
 /// Settles the query and returns a callback object for external integrations.
 /// Performs same settlement logic as settle() but provides structured callback
 /// data for contracts that need to react to query resolution.
@@ -408,7 +377,7 @@ public fun dispute_proposal<T>(
 /// @param ctx Transaction context
 ///
 /// @return QuerySettled callback struct for external contract integration
-public fun settle_with_callback<T>(
+public fun settle<T>(
     query: &mut Query<T>,
     resolution_maybe: Option<Resolution>,
     clock: &Clock,
