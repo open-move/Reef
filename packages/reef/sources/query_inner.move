@@ -24,7 +24,6 @@ const EStaleResolution: u64 = 5;
 const EInvalidResolverType: u64 = 6;
 /// Thrown when query state is invalid for winner determination
 const EInvalidQueryStatus: u64 = 7;
-const EInvalidResolutionQuery: u64 = 8;
 
 /// Optimistic oracle request. Tracks the lifecycle from creation to
 /// settlement, including bonds, proposals, disputes, and callbacks for a given
@@ -185,6 +184,7 @@ public(package) fun propose_data<T>(
 
 public(package) fun dispute_proposal<T>(
     query: &mut QueryInner<T>,
+    parent_id: ID,
     bond: Balance<T>,
     fee_factor_bps: u64,
     disputer: address,
@@ -228,7 +228,7 @@ public(package) fun dispute_proposal<T>(
 
     let verification_bond_amount = query.balances.bond.value();
     let ticket = resolver::new_dispute_ticket<T>(
-        query.id.to_inner(),
+        parent_id,
         query.resolver_id,
         query.balances.bond.split(fee_amount),
         disputer,
@@ -283,7 +283,6 @@ public(package) fun new_custom_schema(inner: BaseSchema): Schema {
 fun apply_resolution<T>(query: &mut QueryInner<T>, resolution: Resolution) {
     assert!(query.proposal.is_some() && query.dispute.is_some(), EDataNotProposed);
 
-    assert!(resolution.query_id() == query.id(), EInvalidResolutionQuery);
     assert!(resolution.resolver_id() == query.resolver_id, EInvalidResolverType);
     assert!(resolution.resolved_at_ms() >= query.dispute.borrow().disputed_at_ms, EStaleResolution);
 
@@ -432,10 +431,6 @@ public(package) fun bond_balance<T>(query: &QueryInner<T>): u64 {
 
 public(package) fun reward_balance<T>(query: &QueryInner<T>): u64 {
     query.balances.reward.value()
-}
-
-public(package) fun id<T>(query: &QueryInner<T>): ID {
-    query.id.to_inner()
 }
 
 public fun state_created(): State {

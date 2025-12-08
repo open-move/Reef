@@ -425,6 +425,7 @@ fun dispute_proposal_internal<T>(
     assert!(query_inner.state(clock) == query_inner::state_proposed(), EInvalidState);
 
     let (ticket, disputer, bond_amount, refund_amount) = query_inner.dispute_proposal(
+        query_id,
         bond.into_balance(),
         protocol.fee_factor_bps(),
         ctx.sender(),
@@ -446,31 +447,35 @@ fun dispute_proposal_internal<T>(
     (ticket, query_id, disputer, query_inner.creator_witness())
 }
 
-/// Settles the query and returns a callback object for external integrations.
-/// Performs same settlement logic as settle() but provides structured callback
-/// data for contracts that need to react to query resolution.
-///
-/// @param query Query to settle
-/// @param resolution Optional resolution from resolver
-/// @param clock System clock for validation
-/// @param ctx Transaction context
-///
-/// @return QuerySettled callback struct for external contract integration
+/// Settles the query without returning a callback. Emits QuerySettled.
 public fun settle<T>(
     query: &mut Query<T>,
     resolution_maybe: Option<Resolution>,
     clock: &Clock,
     ctx: &mut TxContext,
-): callback::QuerySettled {
-    let query_id = query.id.to_inner();
-    let query_inner = query.load_inner_mut<T>();
-    resolution_maybe.do_ref!(|r| {
-        assert!(r.query_id() == query_id, EWrongQueryResolution);
-        assert!(query_inner.schema().validate(&r.data()), EInvalidProposalData);
-    });
+) {
+    let (query_id, winner, total_payout, resolved_data, _) =
+        query.settle_internal(resolution_maybe, clock, ctx);
 
-    let creator_witness = query_inner.creator_witness();
-    let (winner, total_payout, resolved_data) = query_inner.settle(resolution_maybe, clock, ctx);
+    event::emit(QuerySettled {
+        winner,
+        total_payout,
+        resolved_data,
+        query_id,
+    });
+}
+
+/// Settles the query and returns a callback object for external integrations.
+/// Performs same settlement logic as settle() but provides structured callback
+/// data for contracts that need to react to query resolution.
+public fun settle_with_callback<T>(
+    query: &mut Query<T>,
+    resolution_maybe: Option<Resolution>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): callback::QuerySettled {
+    let (query_id, winner, total_payout, resolved_data, creator_witness) =
+        query.settle_internal(resolution_maybe, clock, ctx);
 
     event::emit(QuerySettled {
         winner,
@@ -481,6 +486,31 @@ public fun settle<T>(
 
     callback::new_query_settled(
         query_id,
+        resolved_data,
+        creator_witness,
+    )
+}
+
+fun settle_internal<T>(
+    query: &mut Query<T>,
+    resolution_maybe: Option<Resolution>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (ID, address, u64, vector<u8>, TypeName) {
+    let query_id = query.id.to_inner();
+    let query_inner = query.load_inner_mut<T>();
+    resolution_maybe.do_ref!(|r| {
+        assert!(r.query_id() == query_id, EWrongQueryResolution);
+        assert!(query_inner.schema().validate(&r.data()), EInvalidProposalData);
+    });
+
+    let creator_witness = query_inner.creator_witness();
+    let (winner, total_payout, resolved_data) = query_inner.settle(resolution_maybe, clock, ctx);
+
+    (
+        query_id,
+        winner,
+        total_payout,
         resolved_data,
         creator_witness,
     )
