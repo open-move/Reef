@@ -24,6 +24,19 @@ public struct QuerySettled {
     creator_witness: TypeName,
 }
 
+public use fun data_proposed_data as DataProposed.data;
+public use fun data_proposed_query_id as DataProposed.query_id;
+public use fun data_proposed_submitter as DataProposed.submitter;
+public use fun data_proposed_creator_witness as DataProposed.creator_witness;
+
+public use fun proposal_disputed_query_id as ProposalDisputed.query_id;
+public use fun proposal_disputed_disputer as ProposalDisputed.disputer;
+public use fun proposal_disputed_creator_witness as ProposalDisputed.creator_witness;
+
+public use fun query_settled_data as QuerySettled.data;
+public use fun query_settled_query_id as QuerySettled.query_id;
+public use fun query_settled_creator_witness as QuerySettled.creator_witness;
+
 public(package) fun new_data_proposed(
     query_id: ID,
     submitter: address,
@@ -100,7 +113,7 @@ public fun verify_query_settled<T: drop>(callback: QuerySettled, _: T) {
 /// @param callback QuerySettled callback to read from
 ///
 /// @return Final resolved data bytes
-public fun settled_data(callback: &QuerySettled): vector<u8> {
+public fun query_settled_data(callback: &QuerySettled): vector<u8> {
     callback.data
 }
 
@@ -109,6 +122,38 @@ public fun settled_data(callback: &QuerySettled): vector<u8> {
 /// @param callback QuerySettled callback to read from
 ///
 /// @return Query object ID
-public fun settled_query_id(callback: &QuerySettled): ID {
+public fun query_settled_query_id(callback: &QuerySettled): ID {
     callback.query_id
+}
+
+public fun data_proposed_query_id(callback: &DataProposed): ID {
+    callback.query_id
+}
+
+public fun data_proposed_submitter(callback: &DataProposed): address {
+    callback.submitter
+}
+
+public fun data_proposed_data(callback: &DataProposed): vector<u8> {
+    callback.data
+}
+
+public fun data_proposed_creator_witness(callback: &DataProposed): TypeName {
+    callback.creator_witness
+}
+
+public fun proposal_disputed_query_id(callback: &ProposalDisputed): ID {
+    callback.query_id
+}
+
+public fun proposal_disputed_disputer(callback: &ProposalDisputed): address {
+    callback.disputer
+}
+
+public fun proposal_disputed_creator_witness(callback: &ProposalDisputed): TypeName {
+    callback.creator_witness
+}
+
+public fun query_settled_creator_witness(callback: &QuerySettled): TypeName {
+    callback.creator_witness
 }
