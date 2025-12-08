@@ -5,7 +5,7 @@ use reef::protocol::{Self, Protocol};
 use reef::query_inner::{Self, QueryInner, State, Schema};
 use reef::resolver::{Resolver, Resolution, DisputeTicket};
 use reef::schema::{Self, Schema as BaseSchema};
-use std::type_name;
+use std::type_name::{self, TypeName};
 use sui::clock::Clock;
 use sui::coin::Coin;
 use sui::event;
@@ -292,12 +292,40 @@ public fun propose_data<T>(
     clock: &Clock,
     ctx: &TxContext,
 ) {
+    let _ = propose_data_internal(query, bond, data, clock, ctx);
+}
+
+/// Proposes data and returns a callback for downstream contracts.
+/// Same semantics as `propose_data` with an additional callback return.
+public fun propose_data_with_callback<T>(
+    query: &mut Query<T>,
+    bond: Coin<T>,
+    data: vector<u8>,
+    clock: &Clock,
+    ctx: &TxContext,
+): callback::DataProposed {
+    let (query_id, proposer, data, creator_witness) =
+        propose_data_internal(query, bond, data, clock, ctx);
+
+    callback::new_data_proposed(
+        query_id,
+        proposer,
+        data,
+        creator_witness,
+    )
+}
+
+fun propose_data_internal<T>(
+    query: &mut Query<T>,
+    bond: Coin<T>,
+    data: vector<u8>,
+    clock: &Clock,
+    ctx: &TxContext,
+): (ID, address, vector<u8>, TypeName) {
+    let query_id = query.id.to_inner();
     let query_inner = query.load_inner_mut<T>();
     assert!(query_inner.state(clock) == query_inner::state_created(), EInvalidState);
 
-    // For non-timestamp queries, reject "too_early" value as it's only
-    // meaningful for timestamp-based queries where data might not yet exist.
-    // Event-based queries should provide actual data or "unresolvable".
     assert!(
         !(query_inner.timestamp_ms().is_none() && data == too_early!()),
         ECannotProposeTooEarly,
@@ -313,13 +341,16 @@ public fun propose_data<T>(
         ctx.sender(),
         clock,
     );
+
     event::emit(DataProposed {
         data,
         proposer,
         bond_amount,
         expires_at_ms,
-        query_id: query.id.to_inner(),
+        query_id,
     });
+
+    (query_id, proposer, data, query_inner.creator_witness())
 }
 
 /// Disputes the current proposal by posting a bond. Transitions query to Disputed
@@ -335,12 +366,45 @@ public fun propose_data<T>(
 ///
 /// Emits ProposalDisputed event
 public fun dispute_proposal<T>(
-    protocol: &mut Protocol,
+    protocol: &Protocol,
     query: &mut Query<T>,
     bond: Coin<T>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): DisputeTicket<T> {
+    let (ticket, _, _, _) = dispute_proposal_internal(protocol, query, bond, clock, ctx);
+    ticket
+}
+
+/// Disputes the current proposal and returns a callback for downstream contracts.
+/// Same semantics as `dispute_proposal` with an additional callback return.
+public fun dispute_proposal_with_callback<T>(
+    protocol: &Protocol,
+    query: &mut Query<T>,
+    bond: Coin<T>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (DisputeTicket<T>, callback::ProposalDisputed) {
+    let (ticket, query_id, disputer, creator_witness) =
+        dispute_proposal_internal(protocol, query, bond, clock, ctx);
+
+    (
+        ticket,
+        callback::new_proposal_disputed(
+            query_id,
+            disputer,
+            creator_witness,
+        ),
+    )
+}
+
+fun dispute_proposal_internal<T>(
+    protocol: &Protocol,
+    query: &mut Query<T>,
+    bond: Coin<T>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (DisputeTicket<T>, ID, address, TypeName) {
     let query_id = query.id.to_inner();
     let query_inner = query.load_inner_mut<T>();
     assert!(query_inner.state(clock) == query_inner::state_proposed(), EInvalidState);
@@ -364,7 +428,7 @@ public fun dispute_proposal<T>(
         disputed_at_ms: clock.timestamp_ms(),
     });
 
-    ticket
+    (ticket, query_id, disputer, query_inner.creator_witness())
 }
 
 /// Settles the query and returns a callback object for external integrations.
