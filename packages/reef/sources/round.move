@@ -75,8 +75,8 @@ public(package) fun new_round_manager(
 ///
 /// @return Mutable reference to next round
 public fun next_round(manager: &mut RoundManager, clock: &Clock): &Round {
-    let round_no = current_round_no(manager, clock) + 1;
-    ensure_round_exists(manager, round_no)
+    let round_no = manager.current_round_no(clock) + 1;
+    manager.ensure_round_exists(round_no)
 }
 
 /// Returns the current round based on the clock time.
@@ -87,8 +87,8 @@ public fun next_round(manager: &mut RoundManager, clock: &Clock): &Round {
 ///
 /// @return Reference to current round
 public fun current_round(manager: &mut RoundManager, clock: &Clock): &Round {
-    let round_no = round_no_for_timestamp(manager, clock.timestamp_ms());
-    ensure_round_exists(manager, round_no)
+    let round_no = manager.round_no_for_timestamp(clock.timestamp_ms());
+    manager.ensure_round_exists(round_no)
 }
 
 /// Returns a mutable reference to the current round.
@@ -99,8 +99,8 @@ public fun current_round(manager: &mut RoundManager, clock: &Clock): &Round {
 ///
 /// @return Mutable reference to current round
 public fun current_round_mut(manager: &mut RoundManager, clock: &Clock): &mut Round {
-    let round_no = round_no_for_timestamp(manager, clock.timestamp_ms());
-    ensure_round_exists(manager, round_no)
+    let round_no = manager.round_no_for_timestamp(clock.timestamp_ms());
+    manager.ensure_round_exists(round_no)
 }
 
 /// Returns the current round number.
@@ -110,7 +110,7 @@ public fun current_round_mut(manager: &mut RoundManager, clock: &Clock): &mut Ro
 ///
 /// @return Current round number
 public fun current_round_no(manager: &RoundManager, clock: &Clock): u64 {
-    round_no_for_timestamp(manager, clock.timestamp_ms())
+    manager.round_no_for_timestamp(clock.timestamp_ms())
 }
 
 /// Calculates which round number a timestamp belongs to using the
@@ -138,7 +138,7 @@ public fun round_boundaries(manager: &RoundManager, round_no: u64): (u64, u64) {
 
 fun ensure_round_exists(manager: &mut RoundManager, round_no: u64): &mut Round {
     if (!manager.rounds.contains(round_no)) {
-        let (start_time, end_time) = round_boundaries(manager, round_no);
+        let (start_time, end_time) = manager.round_boundaries(round_no);
 
         let new_round = Round {
             id: derived_object::claim(&mut manager.id, round_no),
@@ -160,7 +160,7 @@ fun ensure_round_exists(manager: &mut RoundManager, round_no: u64): &mut Round {
 
 /// Returns the next round number after the current one.
 public fun get_next_round_no(manager: &RoundManager, clock: &Clock): u64 {
-    current_round_no(manager, clock) + 1
+    manager.current_round_no(clock) + 1
 }
 
 /// Checks if a specific round is currently active.
@@ -190,12 +190,12 @@ public fun get_round_mut(manager: &mut RoundManager, round_no: u64): &mut Round 
 /// Gets the round that contains a specific timestamp.
 /// Creates the round if it doesn't exist yet.
 public fun get_round_for_timestamp(manager: &mut RoundManager, timestamp_ms: u64): &Round {
-    let round_no = round_no_for_timestamp(manager, timestamp_ms);
-    ensure_round_exists(manager, round_no)
+    let round_no = manager.round_no_for_timestamp(timestamp_ms);
+    manager.ensure_round_exists(round_no)
 }
 
 public(package) fun get_or_create_round(manager: &mut RoundManager, round_no: u64): &Round {
-    ensure_round_exists(manager, round_no)
+    manager.ensure_round_exists(round_no)
 }
 
 /// Returns the start time of the round in milliseconds.
