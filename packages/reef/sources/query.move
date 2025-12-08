@@ -5,7 +5,7 @@ use reef::protocol::{Self, Protocol};
 use reef::query_inner::{Self, QueryInner, State, Schema};
 use reef::resolver::{Resolver, Resolution, DisputeTicket};
 use reef::schema::{Self, Schema as BaseSchema};
-use std::type_name::{self, TypeName};
+use std::type_name::{Self, TypeName};
 use sui::clock::Clock;
 use sui::coin::Coin;
 use sui::event;
@@ -87,6 +87,12 @@ public struct QuerySettled has copy, drop {
     winner: address,
     total_payout: u64,
 }
+
+public use fun dispute_proposal as Query.dispute;
+public use fun dispute_proposal_with_callback as Query.dispute_with_callback;
+
+public use fun propose_data as Query.propose;
+public use fun propose_data_with_callback as Query.propose_with_callback;
 
 /// Creates a new query with specified schema. The query starts in Created state
 /// and validates all inputs against protocol constraints. Creator witness provides
@@ -292,7 +298,7 @@ public fun propose_data<T>(
     clock: &Clock,
     ctx: &TxContext,
 ) {
-    let _ = propose_data_internal(query, bond, data, clock, ctx);
+    propose_data_internal(query, bond, data, clock, ctx);
 }
 
 /// Proposes data and returns a callback for downstream contracts.
@@ -304,8 +310,13 @@ public fun propose_data_with_callback<T>(
     clock: &Clock,
     ctx: &TxContext,
 ): callback::DataProposed {
-    let (query_id, proposer, data, creator_witness) =
-        propose_data_internal(query, bond, data, clock, ctx);
+    let (query_id, proposer, data, creator_witness) = propose_data_internal(
+        query,
+        bond,
+        data,
+        clock,
+        ctx,
+    );
 
     callback::new_data_proposed(
         query_id,
@@ -366,27 +377,31 @@ fun propose_data_internal<T>(
 ///
 /// Emits ProposalDisputed event
 public fun dispute_proposal<T>(
-    protocol: &Protocol,
     query: &mut Query<T>,
+    protocol: &mut Protocol,
     bond: Coin<T>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): DisputeTicket<T> {
-    let (ticket, _, _, _) = dispute_proposal_internal(protocol, query, bond, clock, ctx);
+    let (ticket, _, _, _) = query.dispute_proposal_internal(protocol, bond, clock, ctx);
     ticket
 }
 
 /// Disputes the current proposal and returns a callback for downstream contracts.
 /// Same semantics as `dispute_proposal` with an additional callback return.
 public fun dispute_proposal_with_callback<T>(
-    protocol: &Protocol,
     query: &mut Query<T>,
+    protocol: &mut Protocol,
     bond: Coin<T>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (DisputeTicket<T>, callback::ProposalDisputed) {
-    let (ticket, query_id, disputer, creator_witness) =
-        dispute_proposal_internal(protocol, query, bond, clock, ctx);
+    let (ticket, query_id, disputer, creator_witness) = query.dispute_proposal_internal(
+        protocol,
+        bond,
+        clock,
+        ctx,
+    );
 
     (
         ticket,
@@ -399,8 +414,8 @@ public fun dispute_proposal_with_callback<T>(
 }
 
 fun dispute_proposal_internal<T>(
-    protocol: &Protocol,
     query: &mut Query<T>,
+    protocol: &mut Protocol,
     bond: Coin<T>,
     clock: &Clock,
     ctx: &mut TxContext,
